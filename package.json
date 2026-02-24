@@ -1,0 +1,36 @@
+{
+  "name": "fee-aware-moonshot-bot",
+  "version": "1.0.0",
+  "description": "A Solana meme coin scanner + paper-trader + optional live executor with fee awareness and risk gating",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts"
+  },
+  "keywords": [
+    "solana",
+    "trading",
+    "meme-coins",
+    "dex",
+    "paper-trading"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@solana/web3.js": "^1.91.0",
+    "bs58": "^6.0.0",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^2.7.0",
+    "p-limit": "^5.1.0",
+    "pino": "^8.17.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^6.20.0",
+    "@typescript-eslint/parser": "^6.20.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  }
+}
