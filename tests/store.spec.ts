@@ -1,7 +1,9 @@
+'// tests/store.spec.ts
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   openPosition,
   closePosition,
+  updatePeak,
   getOpenPositions,
   getAllPositions,
   getPositionById,
@@ -22,7 +24,7 @@ describe("openPosition", () => {
     expect(pos.tokenAmount).toBe(1000);
   });
 
-  it("assigns a unique id", () => {
+  it("assigns a unique id to each position", () => {
     const a = openPosition("M1", "A", 1, 0.05, 100);
     const b = openPosition("M2", "B", 2, 0.05, 200);
     expect(a.id).not.toBe(b.id);
@@ -31,6 +33,26 @@ describe("openPosition", () => {
   it("appears in getOpenPositions()", () => {
     openPosition("MINT1", "TKN", 1.0, 0.05, 1000);
     expect(getOpenPositions()).toHaveLength(1);
+  });
+
+  it("sets peakPriceUsd equal to entryPriceUsd on open", () => {
+    const pos = openPosition("MINT1", "TKN", 2.5, 0.05, 500);
+    expect(pos.peakPriceUsd).toBe(2.5);
+  });
+});
+
+describe("updatePeak", () => {
+  it("updates peakPriceUsd when price rises", () => {
+    const pos = openPosition("MINT1", "TKN", 1.0, 0.05, 1000);
+    updatePeak(pos.id, 2.0);
+    expect(getPositionById(pos.id)!.peakPriceUsd).toBe(2.0);
+  });
+
+  it("does not lower peakPriceUsd when price falls", () => {
+    const pos = openPosition("MINT1", "TKN", 1.0, 0.05, 1000);
+    updatePeak(pos.id, 2.0);
+    updatePeak(pos.id, 0.5);
+    expect(getPositionById(pos.id)!.peakPriceUsd).toBe(2.0);
   });
 });
 
@@ -64,7 +86,7 @@ describe("closePosition", () => {
 describe("getAllPositions / getPositionById", () => {
   it("getAllPositions returns both open and closed", () => {
     const p1 = openPosition("M1", "A", 1, 0.05, 100);
-    const p2 = openPosition("M2", "B", 2, 0.05, 200);
+    openPosition("M2", "B", 2, 0.05, 200);
     closePosition(p1.id, 1.5, 50, "take_profit");
     expect(getAllPositions()).toHaveLength(2);
   });
@@ -86,4 +108,4 @@ describe("resetStore", () => {
     resetStore();
     expect(getAllPositions()).toHaveLength(0);
   });
-});
+});'
