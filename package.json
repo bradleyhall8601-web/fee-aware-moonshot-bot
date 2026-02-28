@@ -11,16 +11,12 @@
     "test:watch": "vitest",
     "lint": "eslint src tests --ext .ts"
   },
-  "keywords": [
-    "solana",
-    "trading",
-    "moonshot"
-  ],
+  "keywords": ["solana", "trading", "moonshot"],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@solana/spl-token": "^0.4.8",
     "@solana/web3.js": "^1.91.0",
+    "@solana/spl-token": "^0.4.8",
     "axios": "^1.7.4",
     "dotenv": "^16.4.5",
     "pino": "^8.20.0",
