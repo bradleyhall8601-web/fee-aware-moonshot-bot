@@ -1,40 +1,35 @@
 // src/state.ts
-// This module is responsible for managing the internal state of the fee-aware moonshot bot.
-
-interface BotState {
-    balances: Record<string, number>;
-    orders: Array<Order>;
-    updateBalance(token: string, amount: number): void;
-    addOrder(order: Order): void;
-}
+// Lightweight in-memory state for the fee-aware moonshot bot.
+// For paper trading all position tracking is handled by PaperTrader in paper.ts;
+// this module provides a simple key/value balance store and order log.
 
 interface Order {
-    id: string;
-    token: string;
-    amount: number;
-    status: 'pending' | 'completed' | 'cancelled';
+  id: string;
+  token: string;
+  amount: number;
+  status: 'pending' | 'completed' | 'cancelled';
 }
 
-class State implements BotState {
-    balances: Record<string, number>;
-    orders: Array<Order>;
+class State {
+  balances: Record<string, number> = {};
+  orders: Order[] = [];
 
-    constructor() {
-        this.balances = {};
-        this.orders = [];
-    }
+  updateBalance(token: string, amount: number): void {
+    this.balances[token] = (this.balances[token] ?? 0) + amount;
+  }
 
-    updateBalance(token: string, amount: number): void {
-        this.balances[token] = (this.balances[token] || 0) + amount;
-    }
+  getBalance(token: string): number {
+    return this.balances[token] ?? 0;
+  }
 
-    addOrder(order: Order): void {
-        this.orders.push(order);
-    }
-    
-    getBalancе(token: string): number {
-        return this.balances[token] || 0;
-    }
+  addOrder(order: Order): void {
+    this.orders.push(order);
+  }
+
+  reset(): void {
+    this.balances = {};
+    this.orders = [];
+  }
 }
 
 export default new State();
