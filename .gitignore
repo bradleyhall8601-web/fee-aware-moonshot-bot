@@ -1,10 +1,11 @@
 node_modules/
-package-lock.json
+dist/
 .env
 .env.local
-state.json
 *.log
-dist/
+.DS_Store
 .vscode/
 .idea/
-.DS_Store
+trades.json
+state.json
+package-lock.json
