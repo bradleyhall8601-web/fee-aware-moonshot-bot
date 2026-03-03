@@ -4,17 +4,19 @@
   "description": "Fee-aware Solana moonshot bot with paper mode default",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
     "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "test": "jest --passWithNoTests"
+    "health": "tsx src/index.ts health",
+    "test": "jest --runInBand",
+    "lint": "node -e \"console.log('lint: not configured')\""
   },
   "keywords": ["solana", "trading", "moonshot"],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@solana/web3.js": "^1.91.0",
     "@solana/spl-token": "^0.4.8",
+    "@solana/web3.js": "^1.91.0",
     "axios": "^1.7.4",
     "dotenv": "^16.4.5",
     "pino": "^8.20.0",
@@ -27,19 +29,5 @@
     "ts-jest": "^29.1.5",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
-  },
-  "jest": {
-    "preset": "ts-jest",
-    "testEnvironment": "node",
-    "testMatch": ["**/__tests__/**/*.test.ts"],
-    "transform": {
-      "^.+\\.tsx?$": ["ts-jest", {
-        "tsconfig": {
-          "strict": true,
-          "esModuleInterop": true,
-          "skipLibCheck": true
-        }
-      }]
-    }
   }
 }
