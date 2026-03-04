@@ -1,0 +1,30 @@
+{
+  "restartSafe": true,
+  "walletAwareSizing": true,
+  "SOLPriceSource": {
+    "primary": "Birdeye SOL/USD",
+    "fallback": "DexScreener"
+  },
+  "maxConcurrentPositions": 3,
+  "walletSpendCapUSD": 20,
+  "sizingLadder": true,
+  "schedulerTicks": {
+    "positionsTick": "2s",
+    "scannerTick": "5s",
+    "healthTick": "10s",
+    "exitsFirst": true
+  },
+  "birdeyeAdapter": true,
+  "discovery": {
+    "latestPairs": true,
+    "seenPairAddresses": true,
+    "maxPairAgeHours": 24
+  },
+  "paperTrading": {
+    "default": true,
+    "exposureCaps": true
+  },
+  "axiomTradeAdapter": {
+    "enabled": false
+  }
+}
