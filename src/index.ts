@@ -14,16 +14,22 @@ async function main(): Promise<void> {
   logger.info("Loaded persisted state");
 
   if (config.enableLiveTrading) {
-    if (!env.WALLET_PRIVATE_KEY) {
-      logger.error("Wallet not configured: set WALLET_PRIVATE_KEY when ENABLE_LIVE_TRADING=true");
+    try {
+      assertLiveWalletEnv();
+    } catch (error) {
+      logger.error({ err: error }, "Live trading wallet configuration error");
       process.exit(1);
     }
-    assertLiveWalletEnv();
   }
 
   let walletPubkey = "unavailable";
   if (config.enableLiveTrading) {
-    walletPubkey = getWalletPubkey().toBase58();
+    try {
+      walletPubkey = getWalletPubkey().toBase58();
+    } catch (error) {
+      logger.error({ err: error }, "Unable to derive wallet pubkey for live trading");
+      process.exit(1);
+    }
   } else {
     try {
       walletPubkey = getWalletPubkey().toBase58();
@@ -34,8 +40,10 @@ async function main(): Promise<void> {
 
   logger.info({ walletPubkey, liveTrading: config.enableLiveTrading, dryRun: config.dryRun }, "Runtime mode");
 
-  const trader = new PaperTrader(persistedState);
-  trader.resume(persistedState);
+  const trader = new PaperTrader(persistedState, async () => {
+    await savePersistedState(trader.getState());
+  });
+  trader.resumeFromPersistedState(persistedState);
 
   const bot = new MoonshotBot(trader, {
     persistState: async () => {

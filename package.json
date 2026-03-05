@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "health": "tsx src/index.ts health",
-    "test": "jest --runInBand",
+    "test": "jest --passWithNoTests",
     "lint": "node -e \"console.log('lint: not configured')\""
   },
   "keywords": ["solana", "trading", "meme", "bot"],

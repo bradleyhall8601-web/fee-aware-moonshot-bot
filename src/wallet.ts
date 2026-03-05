@@ -9,10 +9,19 @@ function loadSecretFromPath(path: string): Uint8Array {
   return Uint8Array.from(parsed);
 }
 
+function loadSecretFromPrivateKey(raw: string): Uint8Array {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("[")) {
+    const parsed = JSON.parse(trimmed) as number[];
+    return Uint8Array.from(parsed);
+  }
+  return bs58.decode(trimmed);
+}
+
 export function getWalletKeypair(): Keypair | null {
   if (env.WALLET_PRIVATE_KEY) {
     try {
-      return Keypair.fromSecretKey(bs58.decode(env.WALLET_PRIVATE_KEY));
+      return Keypair.fromSecretKey(loadSecretFromPrivateKey(env.WALLET_PRIVATE_KEY));
     } catch {
       return null;
     }

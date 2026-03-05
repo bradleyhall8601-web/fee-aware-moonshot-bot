@@ -1,4 +1,24 @@
-import 'dotenv/config';
+import fs from "node:fs";
+import path from "node:path";
+import dotenv from "dotenv";
+
+function ensureEnvFileExists(): void {
+  const envPath = path.resolve(process.cwd(), ".env");
+  if (fs.existsSync(envPath)) {
+    return;
+  }
+
+  const examplePath = path.resolve(process.cwd(), ".env.example");
+  if (!fs.existsSync(examplePath)) {
+    return;
+  }
+
+  fs.copyFileSync(examplePath, envPath);
+}
+
+ensureEnvFileExists();
+dotenv.config();
+
 function optionalStr(val: string | undefined): string | undefined {
   if (val === undefined) {
     return undefined;
@@ -49,7 +69,7 @@ const hasMinPriceChangeConfig = pickEnv(["MIN_PRICE_CHANGE_M5", "MIN_PRICE_CHANG
 
 export const env = {
   ENABLE_LIVE_TRADING: bool(["ENABLE_LIVE_TRADING"], false),
-  DRY_RUN: bool(["DRY_RUN"], false),
+  DRY_RUN: bool(["DRY_RUN"], true),
   WALLET_PRIVATE_KEY: pickEnv(["WALLET_PRIVATE_KEY"]),
   WALLET_KEYPAIR_PATH: pickEnv(["WALLET_KEYPAIR_PATH"]),
   WALLET_PUBKEY: pickEnv(["WALLET_PUBKEY"]),
@@ -98,7 +118,11 @@ export function assertLiveWalletEnv(): void {
     throw new Error("RPC_URL is required when ENABLE_LIVE_TRADING=true");
   }
 
-  if (!env.WALLET_PRIVATE_KEY) {
-    throw new Error("Wallet not configured: WALLET_PRIVATE_KEY is required when ENABLE_LIVE_TRADING=true");
+  if (!env.WALLET_PRIVATE_KEY && !env.WALLET_KEYPAIR_PATH) {
+    throw new Error("Wallet not configured: set WALLET_PRIVATE_KEY or WALLET_KEYPAIR_PATH when ENABLE_LIVE_TRADING=true");
+  }
+
+  if (env.WALLET_KEYPAIR_PATH && !fs.existsSync(env.WALLET_KEYPAIR_PATH)) {
+    throw new Error(`WALLET_KEYPAIR_PATH not found: ${env.WALLET_KEYPAIR_PATH}`);
   }
 }

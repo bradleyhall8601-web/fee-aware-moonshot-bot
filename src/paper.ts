@@ -2,13 +2,32 @@ import { BotState, DexPair, ExitReason, Position, Trade } from "./types";
 
 export class PaperTrader {
   private state: BotState;
+  private readonly onMutation?: () => Promise<void> | void;
 
-  constructor(initialState: BotState) {
+  constructor(initialState: BotState, onMutation?: () => Promise<void> | void) {
     this.state = initialState;
+    this.onMutation = onMutation;
   }
 
   resume(state: BotState): void {
     this.state = state;
+  }
+
+  resumeFromPersistedState(state: BotState): void {
+    this.state = state;
+  }
+
+  private persistMutation(): void {
+    try {
+      const result = this.onMutation?.();
+      if (result && typeof (result as Promise<void>).catch === "function") {
+        void (result as Promise<void>).catch(() => {
+          // Best-effort persistence hook from trader mutations.
+        });
+      }
+    } catch {
+      // Best-effort persistence hook from trader mutations.
+    }
   }
 
   getState(): BotState {
@@ -83,6 +102,7 @@ export class PaperTrader {
 
     this.state.positions.push(position);
     this.state.exposureUsd = this.getExposureUsd();
+    this.persistMutation();
     return position;
   }
 
@@ -134,6 +154,7 @@ export class PaperTrader {
       exitTxSig: txSig
     });
     this.state.stats.tradeCount += 1;
+    this.persistMutation();
 
     return position;
   }
@@ -179,6 +200,7 @@ export class PaperTrader {
 
     this.state.closedTrades.push(trade);
     this.state.stats.tradeCount += 1;
+    this.persistMutation();
     return trade;
   }
 

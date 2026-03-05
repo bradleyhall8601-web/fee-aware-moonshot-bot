@@ -161,7 +161,7 @@ export async function loadPersistedState(): Promise<BotState> {
     };
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
-    if (err.code === "ENOENT") {
+    if (err.code === "ENOENT" || error instanceof SyntaxError) {
       return defaultState();
     }
     throw error;
