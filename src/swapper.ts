@@ -6,6 +6,10 @@ import { logger } from "./logger";
 
 const jupiter = createJupiterApiClient({ basePath: env.JUPITER_API_URL });
 
+function fakeDryRunSignature(): TransactionSignature {
+  return `DRYRUN_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export async function getQuote(
   inputMint: string,
   outputMint: string,
@@ -38,6 +42,7 @@ export async function executeSwapFromQuote(
   }
 
   if (env.DRY_RUN) {
+    const signature = fakeDryRunSignature();
     logger.info(
       {
         mint: quote.outputMint,
@@ -45,7 +50,7 @@ export async function executeSwapFromQuote(
       },
       "DRY_RUN: would submit swap"
     );
-    return null;
+    return signature;
   }
 
   const client = createJupiterApiClient({ basePath: jupiterApiUrl });
@@ -96,8 +101,11 @@ export async function executeSwap(
   payerKeypair: Keypair,
   rpcEndpoint: string,
   jupiterApiUrl: string
-): Promise<{ signature: string | null; outAmount?: string }> {
+): Promise<{ signature: string; outAmount?: string }> {
   const quote = await getQuote(inputMint, outputMint, inAmountLamports, slippageBps);
   const signature = await executeSwapFromQuote(quote, payerKeypair, rpcEndpoint, jupiterApiUrl, slippageBps);
+  if (!signature) {
+    throw new Error("Swap signature missing");
+  }
   return { signature, outAmount: quote.outAmount };
 }

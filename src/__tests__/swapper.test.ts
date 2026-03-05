@@ -9,7 +9,7 @@ jest.mock("@jup-ag/api", () => ({
 }));
 
 describe("executeSwapFromQuote dry-run", () => {
-  it("does not broadcast and returns null", async () => {
+  it("does not broadcast and returns fake dry-run signature", async () => {
     process.env.DRY_RUN = "true";
     jest.resetModules();
 
@@ -30,7 +30,8 @@ describe("executeSwapFromQuote dry-run", () => {
     const payer = web3.Keypair.generate();
     const result = await executeSwapFromQuote(quote, payer, "https://api.mainnet-beta.solana.com", "https://quote-api.jup.ag/v6", 300);
 
-    expect(result).toBeNull();
+    expect(typeof result).toBe("string");
+    expect((result as string).startsWith("DRYRUN_")).toBe(true);
     expect(swapPost).not.toHaveBeenCalled();
   });
 });
