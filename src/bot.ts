@@ -1,4 +1,5 @@
 import { config } from "./config";
+import { env } from "./env";
 import { filterCandidates } from "./filter";
 import { logger } from "./logger";
 import { PaperTrader } from "./paper";
@@ -48,6 +49,11 @@ export class MoonshotBot {
   }
 
   async updateWalletSnapshot(): Promise<void> {
+    const hasWalletIdentity = Boolean(env.WALLET_PUBKEY || env.WALLET_PRIVATE_KEY || env.WALLET_KEYPAIR_PATH);
+    if (!hasWalletIdentity && !config.enableLiveTrading) {
+      return;
+    }
+
     try {
       const pubkey = getWalletPubkey();
       const [solBalance, solUsd] = await Promise.all([getSolBalance(pubkey), getSolPriceUsd()]);
