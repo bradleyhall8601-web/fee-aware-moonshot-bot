@@ -2,203 +2,231 @@ import { config } from "./config";
 import { filterCandidates } from "./filter";
 import { logger } from "./logger";
 import { PaperTrader } from "./paper";
-import { evaluatePositionAction } from "./risk";
-import { scanDexScreenerPairs } from "./scanner";
-import { executeLiveSwap, LiveTradingContext } from "./swapper";
+import { getSolBalance, getSolPriceUsd } from "./rpc";
+import { evaluateEntryRisk, evaluatePositionAction } from "./risk";
+import { fetchLatestSolanaPairs } from "./scanner";
+import { executeSwap } from "./swapper";
+import { DexPair } from "./types";
+import { getWalletPubkey } from "./wallet";
 
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
 
-function estimateFeeCostUsd(baseSizeUsd: number): number {
-  const variableFee = baseSizeUsd * 0.003;
-  return Number((variableFee + config.networkFeeUsdEstimate).toFixed(6));
+function estimateFeeCostUsd(sizeUsd: number): number {
+  return Number((sizeUsd * 0.003 + config.networkFeeUsdEstimate).toFixed(6));
 }
 
-function computeLadderSizeUsd(openCount: number): number {
-  if (!config.sizingLadder) {
-    return Math.min(10, config.walletSpendCapUsd);
-  }
-
-  if (openCount <= 0) return 10;
-  if (openCount === 1) return 6;
-  return 4;
+function usdToLamports(usd: number, solUsd: number): number {
+  const safePrice = solUsd > 0 ? solUsd : config.solUsdFallback;
+  return Math.max(1, Math.floor((usd / safePrice) * 1_000_000_000));
 }
 
 export interface MoonshotBotOptions {
-  liveTradingContext?: LiveTradingContext;
   persistState: () => Promise<void>;
+  fetchPairs?: () => Promise<DexPair[]>;
+  filterPairs?: (pairs: DexPair[]) => DexPair[];
+  executeSwapFn?: typeof executeSwap;
 }
 
 export class MoonshotBot {
-  constructor(
-    private readonly paperTrader: PaperTrader,
-    private readonly options: MoonshotBotOptions
-  ) {}
+  private readonly seenPairQueue: string[];
+  private readonly seenPairSet: Set<string>;
 
-  private get isLiveEnabled(): boolean {
-    return config.enableLiveTrading && Boolean(this.options.liveTradingContext);
+  constructor(
+    private readonly trader: PaperTrader,
+    private readonly options: MoonshotBotOptions
+  ) {
+    this.seenPairQueue = [...this.trader.getState().seenPairs];
+    this.seenPairSet = new Set(this.seenPairQueue);
   }
 
-  async runCycle(): Promise<void> {
-    const monitored = this.paperTrader.monitorOpenPositions();
+  private async recordState(): Promise<void> {
+    const state = this.trader.getState();
+    state.exposureUsd = this.trader.getExposureUsd();
+    state.seenPairs = [...this.seenPairQueue];
+    state.updatedAtMs = Date.now();
+    await this.options.persistState();
+  }
 
-    let closed = 0;
+  async updateWalletSnapshot(): Promise<void> {
+    try {
+      const pubkey = getWalletPubkey();
+      const [solBalance, solUsd] = await Promise.all([getSolBalance(pubkey), getSolPriceUsd()]);
+      this.trader.getState().lastWalletSnapshot = {
+        solBalance,
+        solUsd,
+        walletUsd: solBalance * solUsd,
+        updatedAtMs: Date.now()
+      };
+    } catch (error) {
+      logger.warn({ err: error }, "Wallet snapshot update failed; keeping previous snapshot");
+    }
+  }
+
+  async managePositionsTick(): Promise<void> {
+    await this.updateWalletSnapshot();
+    const monitored = this.trader.monitorOpenPositions();
+
     let partials = 0;
-    for (const position of [...this.paperTrader.getPositions()]) {
+    let closed = 0;
+
+    for (const position of [...this.trader.getPositions()]) {
       const action = evaluatePositionAction(position, position.lastPriceUsd);
       if (!action) {
         continue;
       }
 
       if (action === "partial_take_profit") {
-        const partialSizeRaw = position.amountRaw ? (BigInt(position.amountRaw) / 2n).toString() : undefined;
-        let feeUsd = estimateFeeCostUsd(position.sizeUsd * 0.5);
-        let txSig: string | undefined;
+        const feeUsd = estimateFeeCostUsd(position.remainingSizeUsd * 0.5);
+        let signature: string | undefined;
 
-        if (this.isLiveEnabled) {
+        if (config.enableLiveTrading) {
           try {
-            const result = await executeLiveSwap(
-              this.options.liveTradingContext as LiveTradingContext,
-              {
-                inputMint: position.mint,
-                outputMint: WSOL_MINT,
-                amount: partialSizeRaw ?? String(Math.max(1, Math.floor(position.amountTokens * 500_000)))
-              },
-              {
-                dryRun: config.dryRun,
-                maxPriceImpactPct: config.maxPriceImpactPct,
-                slippageBps: config.slippageBps,
-                feeUsdEstimate: feeUsd
-              }
+            const amountRawHalf = position.amountRaw ? (BigInt(position.amountRaw) / 2n).toString() : undefined;
+            const out = await (this.options.executeSwapFn ?? executeSwap)(
+              position.mint,
+              WSOL_MINT,
+              Number(amountRawHalf ?? Math.max(1, Math.floor(position.remainingTokens * 500_000))),
+              config.slippageBps
             );
-            feeUsd = result.feeUsd;
-            txSig = result.txSig;
-            logger.info({ mint: position.mint, txSig, dryRun: result.dryRun }, "Partial sell executed");
+            signature = out.signature;
           } catch (error) {
-            logger.error({ err: error, mint: position.mint }, "Partial sell failed; keeping full position");
+            logger.error({ err: error, mint: position.mint }, "Partial sell failed; skipping mint");
             continue;
           }
         }
 
-        const updated = this.paperTrader.applyPartialSell(position.mint, position.lastPriceUsd, feeUsd, txSig);
+        const updated = this.trader.applyPartialSell(position.mint, position.lastPriceUsd, feeUsd, signature);
         if (updated) {
           partials += 1;
-          await this.options.persistState();
+          await this.recordState();
         }
         continue;
       }
 
       const reason = action === "exit_trailing_stop" ? "trailing_stop" : "momentum_loss";
-      let feeUsd = estimateFeeCostUsd(position.sizeUsd);
-      let txSig: string | undefined;
+      const feeUsd = estimateFeeCostUsd(position.remainingSizeUsd);
+      let signature: string | undefined;
 
-      if (this.isLiveEnabled) {
+      if (config.enableLiveTrading) {
         try {
-          const result = await executeLiveSwap(
-            this.options.liveTradingContext as LiveTradingContext,
-            {
-              inputMint: position.mint,
-              outputMint: WSOL_MINT,
-              amount: position.amountRaw ?? String(Math.max(1, Math.floor(position.amountTokens * 1_000_000)))
-            },
-            {
-              dryRun: config.dryRun,
-              maxPriceImpactPct: config.maxPriceImpactPct,
-              slippageBps: config.slippageBps,
-              feeUsdEstimate: feeUsd
-            }
+          const out = await (this.options.executeSwapFn ?? executeSwap)(
+            position.mint,
+            WSOL_MINT,
+            Number(position.amountRaw ?? Math.max(1, Math.floor(position.remainingTokens * 1_000_000))),
+            config.slippageBps
           );
-          feeUsd = result.feeUsd;
-          txSig = result.txSig;
-          logger.info({ mint: position.mint, txSig, dryRun: result.dryRun }, "Exit swap executed");
+          signature = out.signature;
         } catch (error) {
-          logger.error({ err: error, mint: position.mint }, "Exit swap failed; skipping this mint");
+          logger.error({ err: error, mint: position.mint }, "Exit swap failed; skipping mint");
           continue;
         }
       }
 
-      const trade = this.paperTrader.closePosition(position.mint, position.lastPriceUsd, reason, feeUsd, txSig);
+      const trade = this.trader.closePosition(position.mint, position.lastPriceUsd, reason, feeUsd, signature);
       if (trade) {
         closed += 1;
-        await this.options.persistState();
+        await this.recordState();
       }
     }
 
-    const pairs = await scanDexScreenerPairs();
-    const candidates = filterCandidates(pairs);
+    logger.info({ monitored, partials, closed }, "Positions managed");
+  }
 
-    const currentOpen = this.paperTrader.getPositions().length;
-    const currentExposure = this.paperTrader.getPositions().reduce((acc, position) => acc + position.sizeUsd, 0);
-    const remainingSlots = Math.max(0, config.maxConcurrentPositions - currentOpen);
-    const remainingCapUsd = Math.max(0, config.walletSpendCapUsd - currentExposure);
+  private trackSeenPair(pairAddress: string): void {
+    if (this.seenPairSet.has(pairAddress)) {
+      return;
+    }
+    this.seenPairSet.add(pairAddress);
+    this.seenPairQueue.push(pairAddress);
+    while (this.seenPairQueue.length > config.maxSeenPairs) {
+      const removed = this.seenPairQueue.shift();
+      if (removed) {
+        this.seenPairSet.delete(removed);
+      }
+    }
+  }
 
+  async scanAndEnterTick(): Promise<void> {
+    await this.managePositionsTick();
+
+    const pairs = await (this.options.fetchPairs ?? fetchLatestSolanaPairs)();
+    const unseenPairs = pairs.filter((pair) => !this.seenPairSet.has(pair.pairAddress));
+    unseenPairs.forEach((pair) => this.trackSeenPair(pair.pairAddress));
+
+    const candidates = (this.options.filterPairs ?? filterCandidates)(unseenPairs);
     let opened = 0;
-    for (const candidate of candidates.slice(0, remainingSlots)) {
-      if ((candidate.priceImpactPct ?? 0) > config.maxPriceImpactPct) {
+
+    for (const candidate of candidates) {
+      const snapshot = this.trader.getState().lastWalletSnapshot;
+      const decision = evaluateEntryRisk({
+        walletUsd: snapshot.walletUsd,
+        currentExposureUsd: this.trader.getExposureUsd(),
+        openPositions: this.trader.getOpenCount()
+      });
+
+      if (!decision.allowed || decision.sizeUsd <= 0) {
         continue;
       }
 
-      const intendedSizeUsd = computeLadderSizeUsd(this.paperTrader.getPositions().length);
-      const buyUsd = Math.max(0, Math.min(intendedSizeUsd, remainingCapUsd));
-      if (buyUsd <= 0) {
-        continue;
-      }
+      const feeUsd = estimateFeeCostUsd(decision.sizeUsd);
+      let signature: string | undefined;
+      let outAmountRaw: string | undefined;
 
-      let feeUsd = estimateFeeCostUsd(buyUsd);
-      let entryTxSig: string | undefined;
-      let amountRaw: string | undefined;
-
-      if (this.isLiveEnabled) {
+      if (config.enableLiveTrading) {
         try {
-          const inLamports = Math.max(1, Math.floor((buyUsd / config.solPriceUsdEstimate) * 1_000_000_000));
-          const result = await executeLiveSwap(
-            this.options.liveTradingContext as LiveTradingContext,
-            {
-              inputMint: WSOL_MINT,
-              outputMint: candidate.mint,
-              amount: String(inLamports)
-            },
-            {
-              dryRun: config.dryRun,
-              maxPriceImpactPct: config.maxPriceImpactPct,
-              slippageBps: config.slippageBps,
-              feeUsdEstimate: feeUsd
-            }
+          const inLamports = usdToLamports(decision.sizeUsd, snapshot.solUsd || config.solUsdFallback);
+          const out = await (this.options.executeSwapFn ?? executeSwap)(
+            WSOL_MINT,
+            candidate.mint,
+            inLamports,
+            config.slippageBps
           );
-          feeUsd = result.feeUsd;
-          entryTxSig = result.txSig;
-          amountRaw = result.outAmount;
-          logger.info({ mint: candidate.mint, txSig: result.txSig, dryRun: result.dryRun }, "Entry swap executed");
+          signature = out.signature;
+          outAmountRaw = out.outAmount;
         } catch (error) {
           logger.error({ err: error, mint: candidate.mint }, "Live entry failed; skipping mint");
           continue;
         }
       }
 
-      const openedPosition = this.paperTrader.openPaperPosition(candidate, buyUsd, feeUsd, entryTxSig, amountRaw);
+      const openedPosition = this.trader.openPosition(candidate, decision.sizeUsd, feeUsd, signature, outAmountRaw);
       if (openedPosition) {
         opened += 1;
-        await this.options.persistState();
+        await this.recordState();
       }
     }
 
-    const state = this.paperTrader.getState();
+    const state = this.trader.getState();
     state.lastCycleAtMs = Date.now();
 
     logger.info(
       {
-        monitored,
-        closed,
-        partials,
         scanned: pairs.length,
+        unseen: unseenPairs.length,
         candidates: candidates.length,
         opened,
         openPositions: state.positions.length,
-        paperBalanceUsd: Number(state.paperBalanceUsd.toFixed(2)),
-        realizedPnlUsd: Number(state.realizedPnlUsd.toFixed(2)),
-        liveTrading: this.isLiveEnabled,
-        dryRun: config.dryRun
+        exposureUsd: Number(state.exposureUsd.toFixed(2)),
+        totalPnlUsd: Number(state.stats.totalPnlUsd.toFixed(2)),
+        liveTrading: config.enableLiveTrading,
+        walletSnapshot: state.lastWalletSnapshot
       },
       "Cycle complete"
+    );
+  }
+
+  async healthTick(): Promise<void> {
+    const state = this.trader.getState();
+    logger.info(
+      {
+        openPositions: state.positions.length,
+        tradeCount: state.stats.tradeCount,
+        totalPnlUsd: Number(state.stats.totalPnlUsd.toFixed(2)),
+        seenPairs: state.seenPairs.length,
+        walletSnapshot: state.lastWalletSnapshot,
+        liveTrading: config.enableLiveTrading
+      },
+      "Health tick"
     );
   }
 }
