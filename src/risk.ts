@@ -1,6 +1,15 @@
 import { config } from "./config";
 import { Position } from "./types";
 
+export interface EntryDecision {
+    allowed: boolean;
+    reason?: string;
+    perTradeUsd: number;
+    spendCapUsd: number;
+    remainingBudgetUsd: number;
+    sizeUsd: number;
+}
+
 export function profitOrLossPct(entryPriceUsd: number, currentPriceUsd: number): number {
     if (entryPriceUsd <= 0) {
         return 0;
@@ -29,7 +38,7 @@ export function isProfitTargetReached(position: Position, currentPriceUsd: numbe
 export type PositionAction = "partial_take_profit" | "exit_trailing_stop" | "exit_momentum_loss" | null;
 
 export function evaluatePositionAction(position: Position, currentPriceUsd: number): PositionAction {
-    if (!position.partialTaken && isProfitTargetReached(position, currentPriceUsd)) {
+    if (!position.hasTakenProfit && isProfitTargetReached(position, currentPriceUsd)) {
         return "partial_take_profit";
     }
 
@@ -37,7 +46,7 @@ export function evaluatePositionAction(position: Position, currentPriceUsd: numb
         return "exit_trailing_stop";
     }
 
-    if (position.partialTaken && position.momentumFailCount > 0) {
+    if (position.hasTakenProfit && position.momentumFailCount > 0) {
         return "exit_momentum_loss";
     }
 
@@ -46,4 +55,53 @@ export function evaluatePositionAction(position: Position, currentPriceUsd: numb
     }
 
     return null;
+}
+
+export function perTradeUsd(walletUsd: number): number {
+    if (!config.sizingLadder) {
+        return 10;
+    }
+    return walletUsd < 100 ? 5 : 10;
+}
+
+export function evaluateEntryRisk(params: {
+    walletUsd: number;
+    currentExposureUsd: number;
+    openPositions: number;
+}): EntryDecision {
+    const spendCapUsd = Math.min(config.walletSpendCapUsd, Math.max(0, params.walletUsd));
+    const remainingBudgetUsd = spendCapUsd - Math.max(0, params.currentExposureUsd);
+    const ladderSizeUsd = perTradeUsd(params.walletUsd);
+    const sizeUsd = Math.max(0, Math.min(ladderSizeUsd, remainingBudgetUsd));
+
+    if (params.openPositions >= config.maxConcurrentPositions) {
+        return {
+            allowed: false,
+            reason: "max_positions",
+            perTradeUsd: ladderSizeUsd,
+            spendCapUsd,
+            remainingBudgetUsd,
+            sizeUsd: 0
+        };
+    }
+
+    if (remainingBudgetUsd <= 0) {
+        return {
+            allowed: false,
+            reason: "budget_exhausted",
+            perTradeUsd: ladderSizeUsd,
+            spendCapUsd,
+            remainingBudgetUsd,
+            sizeUsd: 0
+        };
+    }
+
+    return {
+        allowed: sizeUsd > 0,
+        reason: sizeUsd > 0 ? undefined : "size_zero",
+        perTradeUsd: ladderSizeUsd,
+        spendCapUsd,
+        remainingBudgetUsd,
+        sizeUsd
+    };
 }

@@ -1,35 +1,93 @@
+import axios from "axios";
 import { config } from "./config";
-import { Pair } from "./types";
+import { DexPair } from "./types";
 
-export async function scanDexScreenerPairs(): Promise<Pair[]> {
-  const watchlist = config.watchlistMints;
-  if (watchlist.length > 0) {
-    return watchlist.map((mint, index) => ({
-      mint,
-      symbol: `WATCH${index + 1}`,
-      dex: "raydium",
-      liquidityUsd: config.minLiquidityUsd + 1_000,
-      volume1hUsd: config.minVolume1hUsd + 500,
-      priceUsd: 0.0001 * (index + 1)
-    }));
+interface DexScreenerPair {
+  chainId?: string;
+  dexId?: string;
+  pairAddress?: string;
+  pairCreatedAt?: number;
+  fdv?: number;
+  marketCap?: number;
+  priceUsd?: string;
+  priceChange?: { m5?: number };
+  txns?: { m5?: { buys?: number; sells?: number } };
+  volume?: { m5?: number };
+  liquidity?: { usd?: number };
+  baseToken?: { address?: string; symbol?: string };
+}
+
+interface DexSearchResponse {
+  pairs?: DexScreenerPair[];
+}
+
+const MAX_SEARCH_CANDIDATES = 300;
+
+function normalizeDexPair(raw: DexScreenerPair): DexPair | null {
+  if (!raw?.pairAddress || !raw.baseToken?.address || !raw.baseToken?.symbol) {
+    return null;
   }
 
-  return [
-    {
-      mint: "So11111111111111111111111111111111111111112",
-      symbol: "WSOL",
-      dex: "raydium",
-      liquidityUsd: 150_000,
-      volume1hUsd: 40_000,
-      priceUsd: 180
-    },
-    {
-      mint: "USDC111111111111111111111111111111111111111",
-      symbol: "USDC",
-      dex: "orca",
-      liquidityUsd: 250_000,
-      volume1hUsd: 75_000,
-      priceUsd: 1
+  return {
+    pairAddress: raw.pairAddress,
+    mint: raw.baseToken.address,
+    symbol: raw.baseToken.symbol,
+    dex: raw.dexId ?? "unknown",
+    liquidityUsd: Number(raw.liquidity?.usd ?? 0),
+    volumeM5Usd: Number(raw.volume?.m5 ?? 0),
+    priceUsd: Number(raw.priceUsd ?? 0),
+    pairCreatedAt: Number(raw.pairCreatedAt ?? 0),
+    fdvUsd: raw.fdv ? Number(raw.fdv) : undefined,
+    marketCapUsd: raw.marketCap ? Number(raw.marketCap) : undefined,
+    txnsM5: Number((raw.txns?.m5?.buys ?? 0) + (raw.txns?.m5?.sells ?? 0)),
+    buysM5: Number(raw.txns?.m5?.buys ?? 0),
+    sellsM5: Number(raw.txns?.m5?.sells ?? 0),
+    priceChangeM5Pct: Number(raw.priceChange?.m5 ?? 0)
+  };
+}
+
+async function fetchBroadSolanaPairs(): Promise<DexPair[]> {
+  const queries = config.watchlistMints.length > 0 ? config.watchlistMints : ["SOL", "USDC", "RAY"];
+  const output: DexPair[] = [];
+
+  for (const query of queries) {
+    const response = await axios.get<DexSearchResponse>("https://api.dexscreener.com/latest/dex/search", {
+      params: { q: query },
+      timeout: 10_000
+    });
+
+    for (const rawPair of response.data.pairs ?? []) {
+      if (rawPair.chainId !== "solana") {
+        continue;
+      }
+      const normalized = normalizeDexPair(rawPair);
+      if (normalized) {
+        output.push(normalized);
+      }
     }
-  ];
+  }
+
+  const deduped = new Map<string, DexPair>();
+  for (const pair of output) {
+    deduped.set(pair.pairAddress, pair);
+  }
+  return [...deduped.values()];
+}
+
+export async function fetchLatestSolanaPairs(): Promise<DexPair[]> {
+  try {
+    const broad = await fetchBroadSolanaPairs();
+    const maxAgeMs = config.maxPairAgeHours * 60 * 60 * 1000;
+
+    return broad
+      .filter((pair) => pair.pairCreatedAt > 0 && Date.now() - pair.pairCreatedAt <= maxAgeMs)
+      .sort((a, b) => b.pairCreatedAt - a.pairCreatedAt)
+      .slice(0, MAX_SEARCH_CANDIDATES);
+  } catch {
+    return [];
+  }
+}
+
+export async function scanDexScreenerPairs(): Promise<DexPair[]> {
+  return fetchLatestSolanaPairs();
 }
