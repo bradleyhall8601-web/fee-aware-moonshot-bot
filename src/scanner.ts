@@ -21,6 +21,10 @@ interface DexSearchResponse {
   pairs?: DexScreenerPair[];
 }
 
+interface DexTokenProfile {
+  tokenAddress?: string;
+}
+
 const MAX_SEARCH_CANDIDATES = 300;
 
 function normalizeDexPair(raw: DexScreenerPair): DexPair | null {
@@ -47,7 +51,10 @@ function normalizeDexPair(raw: DexScreenerPair): DexPair | null {
 }
 
 async function fetchBroadSolanaPairs(): Promise<DexPair[]> {
-  const queries = config.watchlistMints.length > 0 ? config.watchlistMints : ["SOL", "USDC", "RAY"];
+  const queries =
+    config.watchlistMints.length > 0
+      ? config.watchlistMints
+      : ["SOL", "USDC", "RAY", "new", "pump", "meme", "moonshot"];
   const output: DexPair[] = [];
 
   for (const query of queries) {
@@ -74,12 +81,71 @@ async function fetchBroadSolanaPairs(): Promise<DexPair[]> {
   return [...deduped.values()];
 }
 
+async function fetchPairsForTokenAddresses(addresses: string[]): Promise<DexPair[]> {
+  const output: DexPair[] = [];
+
+  for (const address of addresses) {
+    try {
+      const response = await axios.get<DexSearchResponse>(
+        `https://api.dexscreener.com/latest/dex/tokens/${address}`,
+        { timeout: 10_000 }
+      );
+
+      for (const rawPair of response.data.pairs ?? []) {
+        if (rawPair.chainId !== "solana") {
+          continue;
+        }
+        const normalized = normalizeDexPair(rawPair);
+        if (normalized) {
+          output.push(normalized);
+        }
+      }
+    } catch {
+      // Skip address-level failures and continue discovery.
+    }
+  }
+
+  return output;
+}
+
+async function fetchNewestTokenAddresses(limit = 60): Promise<string[]> {
+  try {
+    const response = await axios.get<DexTokenProfile[]>("https://api.dexscreener.com/token-profiles/latest/v1", {
+      timeout: 10_000
+    });
+    const deduped = new Set<string>();
+    for (const profile of response.data ?? []) {
+      if (!profile?.tokenAddress) {
+        continue;
+      }
+      deduped.add(profile.tokenAddress);
+      if (deduped.size >= limit) {
+        break;
+      }
+    }
+    return [...deduped];
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchLatestSolanaPairs(): Promise<DexPair[]> {
   try {
-    const broad = await fetchBroadSolanaPairs();
+    const [broad, newestTokenAddresses] = await Promise.all([
+      fetchBroadSolanaPairs(),
+      fetchNewestTokenAddresses()
+    ]);
+
+    const newestPairs = await fetchPairsForTokenAddresses(newestTokenAddresses);
+    const combined = [...broad, ...newestPairs];
     const maxAgeMs = config.maxPairAgeHours * 60 * 60 * 1000;
 
-    return broad
+    const deduped = new Map<string, DexPair>();
+    for (const pair of combined) {
+      deduped.set(pair.pairAddress, pair);
+    }
+
+    return [...deduped.values()]
       .filter((pair) => pair.pairCreatedAt > 0 && Date.now() - pair.pairCreatedAt <= maxAgeMs)
       .sort((a, b) => b.pairCreatedAt - a.pairCreatedAt)
       .slice(0, MAX_SEARCH_CANDIDATES);
