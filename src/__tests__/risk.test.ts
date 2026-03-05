@@ -18,8 +18,8 @@ describe("risk sizing", () => {
 
     expect(decision.allowed).toBe(true);
     expect(decision.spendCapUsd).toBe(20);
-    expect(decision.remainingBudgetUsd).toBe(2);
-    expect(decision.sizeUsd).toBe(2);
+    expect(decision.remainingBudgetUsd).toBeCloseTo(1.9, 5);
+    expect(decision.sizeUsd).toBeCloseTo(1.9, 5);
   });
 
   it("blocks entries at max concurrent positions", () => {
@@ -42,6 +42,18 @@ describe("risk sizing", () => {
 
     expect(decision.allowed).toBe(false);
     expect(decision.reason).toBe("budget_exhausted");
+    expect(decision.sizeUsd).toBe(0);
+  });
+
+  it("blocks entries below minimum trade size", () => {
+    const decision = evaluateEntryRisk({
+      walletUsd: 20,
+      currentExposureUsd: 18.75,
+      openPositions: 1
+    });
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toBe("below_min_trade");
     expect(decision.sizeUsd).toBe(0);
   });
 });

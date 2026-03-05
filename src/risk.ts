@@ -69,8 +69,9 @@ export function evaluateEntryRisk(params: {
     currentExposureUsd: number;
     openPositions: number;
 }): EntryDecision {
-    const spendCapUsd = Math.min(config.walletSpendCapUsd, Math.max(0, params.walletUsd));
-    const remainingBudgetUsd = spendCapUsd - Math.max(0, params.currentExposureUsd);
+    const spendableWalletUsd = Math.max(0, params.walletUsd - config.gasReserveUsd);
+    const spendCapUsd = Math.min(config.walletSpendCapUsd, spendableWalletUsd);
+    const remainingBudgetUsd = spendCapUsd - Math.max(0, params.currentExposureUsd) - config.networkFeeUsdEstimate;
     const ladderSizeUsd = perTradeUsd(params.walletUsd);
     const sizeUsd = Math.max(0, Math.min(ladderSizeUsd, remainingBudgetUsd));
 
@@ -89,6 +90,17 @@ export function evaluateEntryRisk(params: {
         return {
             allowed: false,
             reason: "budget_exhausted",
+            perTradeUsd: ladderSizeUsd,
+            spendCapUsd,
+            remainingBudgetUsd,
+            sizeUsd: 0
+        };
+    }
+
+    if (sizeUsd < config.minTradeUsd) {
+        return {
+            allowed: false,
+            reason: "below_min_trade",
             perTradeUsd: ladderSizeUsd,
             spendCapUsd,
             remainingBudgetUsd,

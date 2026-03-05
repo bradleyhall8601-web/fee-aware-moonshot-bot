@@ -28,6 +28,8 @@ export const config = {
   maxMomentumFailCount: env.MAX_MOMENTUM_FAIL_COUNT,
   maxConcurrentPositions: env.MAX_CONCURRENT_POSITIONS,
   walletSpendCapUsd: env.WALLET_SPEND_CAP_USD,
+  gasReserveUsd: env.GAS_RESERVE_USD,
+  minTradeUsd: env.MIN_TRADE_USD,
   sizingLadder: env.SIZING_LADDER,
   networkFeeUsdEstimate: env.NETWORK_FEE_USD_ESTIMATE,
   solUsdFallback: env.SOL_USD_FALLBACK
