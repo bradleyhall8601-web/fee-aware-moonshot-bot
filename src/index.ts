@@ -1,8 +1,10 @@
 import { config } from "./config";
+import { assertLiveWalletEnv } from "./env";
 import { MoonshotBot } from "./bot";
 import { logger } from "./logger";
 import { PaperTrader } from "./paper";
 import { loadPersistedState, savePersistedState } from "./persistence";
+import { createLiveTradingContext } from "./swapper";
 
 async function main(): Promise<void> {
   logger.info("Fee-aware moonshot bot starting");
@@ -10,10 +12,28 @@ async function main(): Promise<void> {
   const persistedState = await loadPersistedState();
   logger.info("Loaded persisted state");
 
+  let liveTradingContext = undefined;
+  if (config.enableLiveTrading) {
+    assertLiveWalletEnv();
+    liveTradingContext = await createLiveTradingContext();
+    logger.info(
+      {
+        walletPublicKey: liveTradingContext.wallet.publicKey.toBase58(),
+        dryRun: config.dryRun
+      },
+      "Live trading enabled"
+    );
+  }
+
   const paperTrader = new PaperTrader(persistedState);
   paperTrader.resume(persistedState);
 
-  const bot = new MoonshotBot(paperTrader);
+  const bot = new MoonshotBot(paperTrader, {
+    liveTradingContext,
+    persistState: async () => {
+      await savePersistedState(paperTrader.getState());
+    }
+  });
 
   const runCycle = async (): Promise<void> => {
     await bot.runCycle();

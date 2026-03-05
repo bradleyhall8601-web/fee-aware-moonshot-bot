@@ -15,9 +15,11 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@jup-ag/api": "^6.0.35",
     "@solana/spl-token": "^0.4.8",
     "@solana/web3.js": "^1.91.0",
     "axios": "^1.7.4",
+    "bs58": "^6.0.0",
     "dotenv": "^16.4.5",
     "pino": "^8.20.0",
     "pino-pretty": "^10.3.1"
