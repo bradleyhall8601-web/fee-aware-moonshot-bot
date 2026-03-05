@@ -40,8 +40,7 @@ export async function executeSwapFromQuote(
   if (env.DRY_RUN) {
     logger.info(
       {
-        inputMint: quote.inputMint,
-        outputMint: quote.outputMint,
+        mint: quote.outputMint,
         inAmount: quote.inAmount
       },
       "DRY_RUN: would submit swap"

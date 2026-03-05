@@ -7,9 +7,7 @@
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "health": "tsx src/index.ts health",
-    "test": "jest --passWithNoTests",
-    "lint": "node -e \"console.log('lint: not configured')\""
+    "test": "jest --passWithNoTests"
   },
   "keywords": ["solana", "trading", "meme", "bot"],
   "author": "",
