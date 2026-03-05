@@ -182,6 +182,9 @@ export class MoonshotBot {
     const pairs = await (this.options.fetchPairs ?? fetchLatestSolanaPairs)();
     const unseenPairs = pairs.filter((pair) => !this.seenPairSet.has(pair.pairAddress));
     unseenPairs.forEach((pair) => this.trackSeenPair(pair.pairAddress));
+    if (unseenPairs.length > 0) {
+      await this.recordState();
+    }
 
     const candidates = (this.options.filterPairs ?? filterCandidates)(unseenPairs);
     let opened = 0;

@@ -21,6 +21,10 @@ interface DexSearchResponse {
   pairs?: DexScreenerPair[];
 }
 
+interface DexPairsResponse {
+  pairs?: DexScreenerPair[];
+}
+
 interface DexTokenProfile {
   tokenAddress?: string;
 }
@@ -81,6 +85,28 @@ async function fetchBroadSolanaPairs(): Promise<DexPair[]> {
   return [...deduped.values()];
 }
 
+async function fetchNewestSolanaPairsDirect(): Promise<DexPair[]> {
+  try {
+    const response = await axios.get<DexPairsResponse>("https://api.dexscreener.com/latest/dex/pairs/solana", {
+      timeout: 10_000
+    });
+
+    const output: DexPair[] = [];
+    for (const rawPair of response.data.pairs ?? []) {
+      if (rawPair.chainId !== "solana") {
+        continue;
+      }
+      const normalized = normalizeDexPair(rawPair);
+      if (normalized) {
+        output.push(normalized);
+      }
+    }
+    return output;
+  } catch {
+    return [];
+  }
+}
+
 async function fetchPairsForTokenAddresses(addresses: string[]): Promise<DexPair[]> {
   const output: DexPair[] = [];
 
@@ -131,13 +157,14 @@ async function fetchNewestTokenAddresses(limit = 60): Promise<string[]> {
 
 export async function fetchLatestSolanaPairs(): Promise<DexPair[]> {
   try {
-    const [broad, newestTokenAddresses] = await Promise.all([
+    const [directNewest, broad, newestTokenAddresses] = await Promise.all([
+      fetchNewestSolanaPairsDirect(),
       fetchBroadSolanaPairs(),
       fetchNewestTokenAddresses()
     ]);
 
     const newestPairs = await fetchPairsForTokenAddresses(newestTokenAddresses);
-    const combined = [...broad, ...newestPairs];
+    const combined = [...directNewest, ...broad, ...newestPairs];
     const maxAgeMs = config.maxPairAgeHours * 60 * 60 * 1000;
 
     const deduped = new Map<string, DexPair>();
