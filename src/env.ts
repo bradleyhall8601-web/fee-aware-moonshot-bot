@@ -52,6 +52,8 @@ export const env = {
   MAX_BUYS_M5: num(process.env.MAX_BUYS_M5, 1_000),
   MIN_SELLS_M5: num(process.env.MIN_SELLS_M5, 1),
   MAX_SELLS_M5: num(process.env.MAX_SELLS_M5, 100),
+  MIN_LIQUIDITY_TO_FDV_RATIO: num(process.env.MIN_LIQUIDITY_TO_FDV_RATIO, 0.03),
+  MAX_SELLS_TO_BUYS_RATIO: num(process.env.MAX_SELLS_TO_BUYS_RATIO, 1.5),
   MAX_PRICE_IMPACT_PCT: num(process.env.MAX_PRICE_IMPACT_PCT, 5),
   SLIPPAGE_BPS: num(process.env.SLIPPAGE_BPS, 300),
   PROFIT_TARGET_PCT: num(process.env.PROFIT_TARGET_PCT, 30),

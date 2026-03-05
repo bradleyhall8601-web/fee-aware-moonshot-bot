@@ -18,6 +18,8 @@ export const config = {
   maxBuysM5: env.MAX_BUYS_M5,
   minSellsM5: env.MIN_SELLS_M5,
   maxSellsM5: env.MAX_SELLS_M5,
+  minLiquidityToFdvRatio: env.MIN_LIQUIDITY_TO_FDV_RATIO,
+  maxSellsToBuysRatio: env.MAX_SELLS_TO_BUYS_RATIO,
   maxPriceImpactPct: env.MAX_PRICE_IMPACT_PCT,
   slippageBps: env.SLIPPAGE_BPS,
   profitTargetPct: env.PROFIT_TARGET_PCT,

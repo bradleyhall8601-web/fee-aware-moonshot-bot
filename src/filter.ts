@@ -18,7 +18,7 @@ export function filterCandidates(pairs: DexPair[]): DexPair[] {
       pair.sellsM5 <= config.maxSellsM5 &&
       (pair.fdvUsd === undefined || pair.fdvUsd <= config.maxFdvUsd) &&
       (!config.requirePriceUpM5 || pair.priceChangeM5Pct > 0) &&
-      (pair.fdvUsd === undefined || pair.liquidityUsd >= pair.fdvUsd * 0.03) &&
-      pair.sellsM5 <= pair.buysM5 * 1.5
+      (pair.fdvUsd === undefined || pair.liquidityUsd >= pair.fdvUsd * config.minLiquidityToFdvRatio) &&
+      pair.sellsM5 <= pair.buysM5 * config.maxSellsToBuysRatio
   );
 }
