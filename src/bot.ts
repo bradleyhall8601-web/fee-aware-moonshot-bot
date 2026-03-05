@@ -50,10 +50,10 @@ export class MoonshotBot {
     await this.options.persistState();
   }
 
-  async updateWalletSnapshot(): Promise<void> {
+  async updateWalletSnapshot(): Promise<boolean> {
     const hasWalletIdentity = Boolean(env.WALLET_PUBKEY || env.WALLET_PRIVATE_KEY || env.WALLET_KEYPAIR_PATH);
     if (!hasWalletIdentity && !config.enableLiveTrading) {
-      return;
+      return false;
     }
 
     try {
@@ -65,8 +65,10 @@ export class MoonshotBot {
         walletUsd: solBalance * solUsd,
         updatedAtMs: Date.now()
       };
+      return true;
     } catch (error) {
       logger.warn({ err: error }, "Wallet snapshot update failed; keeping previous snapshot");
+      return false;
     }
   }
 
@@ -79,7 +81,10 @@ export class MoonshotBot {
   }
 
   async managePositionsTick(): Promise<void> {
-    await this.updateWalletSnapshot();
+    const snapshotUpdated = await this.updateWalletSnapshot();
+    if (snapshotUpdated) {
+      await this.recordState();
+    }
     const monitored = this.trader.monitorOpenPositions();
 
     let partials = 0;
