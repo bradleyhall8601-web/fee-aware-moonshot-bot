@@ -57,7 +57,6 @@ async function main(): Promise<void> {
     }
   });
 
-  await bot.managePositionsTick();
   await bot.scanAndEnterTick();
 
   let shuttingDown = false;
