@@ -6,6 +6,10 @@ const statePath = path.resolve(process.cwd(), "state.json");
 const tmpPath = `${statePath}.tmp`;
 
 describe("persistence", () => {
+  beforeEach(async () => {
+    await Promise.allSettled([fs.rm(statePath, { force: true }), fs.rm(tmpPath, { force: true })]);
+  });
+
   afterEach(async () => {
     await Promise.allSettled([fs.rm(statePath, { force: true }), fs.rm(tmpPath, { force: true })]);
   });
