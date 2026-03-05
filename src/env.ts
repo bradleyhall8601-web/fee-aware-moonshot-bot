@@ -1,23 +1,4 @@
 import fs from "node:fs";
-import path from "node:path";
-import dotenv from "dotenv";
-
-function ensureEnvFileExists(): void {
-  const envPath = path.resolve(process.cwd(), ".env");
-  if (fs.existsSync(envPath)) {
-    return;
-  }
-
-  const examplePath = path.resolve(process.cwd(), ".env.example");
-  if (!fs.existsSync(examplePath)) {
-    return;
-  }
-
-  fs.copyFileSync(examplePath, envPath);
-}
-
-ensureEnvFileExists();
-dotenv.config();
 
 function optionalStr(val: string | undefined): string | undefined {
   if (val === undefined) {

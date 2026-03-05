@@ -13,6 +13,7 @@ Default mode is paper trading (`ENABLE_LIVE_TRADING=false`).
 ## Environment Setup
 
 - Copy defaults once if needed: `cp .env.example .env`
+- `.env` is not auto-created by runtime code; keep setup explicit via the command above.
 - Keep `ENABLE_LIVE_TRADING=false` for safest paper-only operation.
 
 Required keys in `.env` / `.env.example`:
