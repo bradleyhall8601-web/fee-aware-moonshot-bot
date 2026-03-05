@@ -109,31 +109,34 @@ export const env = {
   LOG_PRETTY: bool(["LOG_PRETTY"], false),
 } as const;
 
-export function hasSigningWallet(): boolean {
-  return Boolean(env.WALLET_PRIVATE_KEY || env.WALLET_KEYPAIR_PATH);
+export const hasPrivateKey = Boolean(env.WALLET_PRIVATE_KEY);
+export const hasKeypairPath = Boolean(env.WALLET_KEYPAIR_PATH);
+export const hasWallet = hasPrivateKey || hasKeypairPath;
+export const hasMonitorOnly = Boolean(env.WALLET_PUBKEY);
+
+export function isLiveEnabled(): boolean {
+  return env.ENABLE_LIVE_TRADING;
 }
 
-export function hasWalletIdentity(): boolean {
-  return hasSigningWallet() || Boolean(env.WALLET_PUBKEY);
+export function isDryRun(): boolean {
+  return env.DRY_RUN;
 }
 
 export function isMonitorOnlyLiveMode(): boolean {
-  return env.ENABLE_LIVE_TRADING && !hasSigningWallet() && Boolean(env.WALLET_PUBKEY);
+  return isLiveEnabled() && !hasWallet && hasMonitorOnly;
+}
+
+export function hasWalletIdentity(): boolean {
+  return hasWallet || hasMonitorOnly;
 }
 
 export function assertLiveWalletEnv(): void {
-  if (!env.ENABLE_LIVE_TRADING) {
+  if (!isLiveEnabled()) {
     return;
   }
 
   if (!env.RPC_URL) {
     throw new Error("RPC_URL is required when ENABLE_LIVE_TRADING=true");
-  }
-
-  if (!hasWalletIdentity()) {
-    throw new Error(
-      "Wallet not configured: set WALLET_KEYPAIR_PATH or WALLET_PRIVATE_KEY (or WALLET_PUBKEY for monitor-only) when ENABLE_LIVE_TRADING=true"
-    );
   }
 
   if (env.WALLET_KEYPAIR_PATH && !fs.existsSync(env.WALLET_KEYPAIR_PATH)) {

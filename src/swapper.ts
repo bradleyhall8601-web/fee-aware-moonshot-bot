@@ -1,22 +1,16 @@
 import { createJupiterApiClient, QuoteResponse } from "@jup-ag/api";
-import { TransactionSignature, VersionedTransaction } from "@solana/web3.js";
+import { Connection, Keypair, TransactionSignature, VersionedTransaction } from "@solana/web3.js";
 import { config } from "./config";
 import { env } from "./env";
 import { logger } from "./logger";
-import { getConnection } from "./rpc";
-import { getWalletKeypair } from "./wallet";
 
 const jupiter = createJupiterApiClient({ basePath: env.JUPITER_API_URL });
-
-function fakeDryRunSignature(): TransactionSignature {
-  return `DRYRUN_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-}
 
 export async function getQuote(
   inputMint: string,
   outputMint: string,
   inAmountLamports: number,
-  slippageBps: number
+  slippageBps = config.slippageBps
 ): Promise<QuoteResponse> {
   return jupiter.quoteGet({
     inputMint,
@@ -26,28 +20,40 @@ export async function getQuote(
   }) as Promise<QuoteResponse>;
 }
 
-export async function executeSwap(
-  inputMint: string,
-  outputMint: string,
-  inAmountLamports: number,
-  slippageBps: number
-): Promise<{ signature: string; outAmount?: string }> {
-  const wallet = getWalletKeypair();
-  if (!wallet) {
-    logger.warn("Live swap blocked: wallet is monitor-only (no keypair)");
-    throw new Error("Live swap requires WALLET_PRIVATE_KEY or WALLET_KEYPAIR_PATH");
-  }
-
-  const quote = await getQuote(inputMint, outputMint, inAmountLamports, slippageBps);
+export function isPriceImpactAcceptable(quote: QuoteResponse): boolean {
   const priceImpact = Number(quote.priceImpactPct ?? 0);
-  if (priceImpact > config.maxPriceImpactPct) {
+  return Number.isFinite(priceImpact) && priceImpact <= config.maxPriceImpactPct;
+}
+
+export async function executeSwapFromQuote(
+  quote: QuoteResponse,
+  payerKeypair: Keypair,
+  rpcEndpoint: string,
+  jupiterApiUrl: string,
+  slippageBps: number
+): Promise<string | null> {
+  if (!isPriceImpactAcceptable(quote)) {
+    const priceImpact = Number(quote.priceImpactPct ?? 0);
     throw new Error(`Swap blocked by price impact gate: ${priceImpact.toFixed(2)}%`);
   }
 
-  const swapPayload = await jupiter.swapPost({
+  if (env.DRY_RUN) {
+    logger.info(
+      {
+        inputMint: quote.inputMint,
+        outputMint: quote.outputMint,
+        inAmount: quote.inAmount
+      },
+      "DRY_RUN: would submit swap"
+    );
+    return null;
+  }
+
+  const client = createJupiterApiClient({ basePath: jupiterApiUrl });
+  const swapPayload = await client.swapPost({
     swapRequest: {
       quoteResponse: quote,
-      userPublicKey: wallet.publicKey.toBase58(),
+      userPublicKey: payerKeypair.publicKey.toBase58(),
       wrapAndUnwrapSol: true,
       dynamicComputeUnitLimit: true
     }
@@ -58,28 +64,15 @@ export async function executeSwap(
   }
 
   const tx = VersionedTransaction.deserialize(Buffer.from(swapPayload.swapTransaction, "base64"));
-  tx.sign([wallet]);
+  tx.sign([payerKeypair]);
 
-  if (config.dryRun) {
-    const simulation = await getConnection().simulateTransaction(tx, {
-      sigVerify: false,
-      replaceRecentBlockhash: true
-    });
-    if (simulation.value.err) {
-      throw new Error(`Dry-run simulation failed: ${JSON.stringify(simulation.value.err)}`);
-    }
-
-    const signature = fakeDryRunSignature();
-    logger.info({ signature, inputMint, outputMint, inAmountLamports }, "DRY RUN would submit swap (simulation only)");
-    return { signature, outAmount: quote.outAmount };
-  }
-
-  const signature = await getConnection().sendRawTransaction(tx.serialize(), {
+  const connection = new Connection(rpcEndpoint, "confirmed");
+  const signature = await connection.sendRawTransaction(tx.serialize(), {
     skipPreflight: false,
     maxRetries: 3
   });
-  const blockhash = await getConnection().getLatestBlockhash("confirmed");
-  const confirmation = await getConnection().confirmTransaction(
+  const blockhash = await connection.getLatestBlockhash("confirmed");
+  const confirmation = await connection.confirmTransaction(
     {
       signature,
       blockhash: blockhash.blockhash,
@@ -93,5 +86,19 @@ export async function executeSwap(
   }
 
   logger.info({ signature }, "Live swap confirmed");
+  return signature;
+}
+
+export async function executeSwap(
+  inputMint: string,
+  outputMint: string,
+  inAmountLamports: number,
+  slippageBps: number,
+  payerKeypair: Keypair,
+  rpcEndpoint: string,
+  jupiterApiUrl: string
+): Promise<{ signature: string | null; outAmount?: string }> {
+  const quote = await getQuote(inputMint, outputMint, inAmountLamports, slippageBps);
+  const signature = await executeSwapFromQuote(quote, payerKeypair, rpcEndpoint, jupiterApiUrl, slippageBps);
   return { signature, outAmount: quote.outAmount };
 }

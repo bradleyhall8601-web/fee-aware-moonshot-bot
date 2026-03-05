@@ -1,7 +1,5 @@
 const quoteGet = jest.fn();
 const swapPost = jest.fn();
-const simulateTransaction = jest.fn();
-const sendRawTransaction = jest.fn();
 
 jest.mock("@jup-ag/api", () => ({
   createJupiterApiClient: () => ({
@@ -10,53 +8,29 @@ jest.mock("@jup-ag/api", () => ({
   })
 }));
 
-jest.mock("../wallet", () => ({
-  getWalletKeypair: () => ({
-    publicKey: { toBase58: () => "WalletPubkey11111111111111111111111111111111" }
-  })
-}));
-
-jest.mock("../rpc", () => ({
-  getConnection: () => ({
-    simulateTransaction,
-    sendRawTransaction,
-    getLatestBlockhash: jest.fn(),
-    confirmTransaction: jest.fn()
-  })
-}));
-
-describe("executeSwap dry-run", () => {
-  it("does not send tx and returns fake dry-run signature", async () => {
+describe("executeSwapFromQuote dry-run", () => {
+  it("does not broadcast and returns null", async () => {
     process.env.DRY_RUN = "true";
     jest.resetModules();
 
-    quoteGet.mockResolvedValue({
+    const quote = {
+      inputMint: "So11111111111111111111111111111111111111112",
+      outputMint: "mint-1",
       inAmount: "1000",
       outAmount: "900",
+      otherAmountThreshold: "850",
+      swapMode: "ExactIn",
+      slippageBps: 300,
+      routePlan: [],
       priceImpactPct: "0.2"
-    });
-    swapPost.mockResolvedValue({
-      swapTransaction: "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAED"
-    });
-    simulateTransaction.mockResolvedValue({ value: { err: null } });
+    } as any;
 
+    const { executeSwapFromQuote } = await import("../swapper");
     const web3 = require("@solana/web3.js");
-    const deserializeSpy = jest.spyOn(web3.VersionedTransaction, "deserialize").mockReturnValue({
-      sign: jest.fn(),
-      serialize: jest.fn(() => Buffer.from("deadbeef", "hex"))
-    });
+    const payer = web3.Keypair.generate();
+    const result = await executeSwapFromQuote(quote, payer, "https://api.mainnet-beta.solana.com", "https://quote-api.jup.ag/v6", 300);
 
-    const { executeSwap } = await import("../swapper");
-    const result = await executeSwap(
-      "So11111111111111111111111111111111111111112",
-      "mint-1",
-      1000,
-      300
-    );
-
-    expect(result.signature.startsWith("DRYRUN_")).toBe(true);
-    expect(sendRawTransaction).not.toHaveBeenCalled();
-
-    deserializeSpy.mockRestore();
+    expect(result).toBeNull();
+    expect(swapPost).not.toHaveBeenCalled();
   });
 });

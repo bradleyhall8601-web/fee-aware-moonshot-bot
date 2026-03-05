@@ -17,14 +17,9 @@ export class PaperTrader {
     this.state = state;
   }
 
-  private persistMutation(): void {
+  private async persistNow(): Promise<void> {
     try {
-      const result = this.onMutation?.();
-      if (result && typeof (result as Promise<void>).catch === "function") {
-        void (result as Promise<void>).catch(() => {
-          // Best-effort persistence hook from trader mutations.
-        });
-      }
+      await this.onMutation?.();
     } catch {
       // Best-effort persistence hook from trader mutations.
     }
@@ -102,7 +97,7 @@ export class PaperTrader {
 
     this.state.positions.push(position);
     this.state.exposureUsd = this.getExposureUsd();
-    this.persistMutation();
+    void this.persistNow();
     return position;
   }
 
@@ -154,7 +149,7 @@ export class PaperTrader {
       exitTxSig: txSig
     });
     this.state.stats.tradeCount += 1;
-    this.persistMutation();
+    void this.persistNow();
 
     return position;
   }
@@ -200,7 +195,7 @@ export class PaperTrader {
 
     this.state.closedTrades.push(trade);
     this.state.stats.tradeCount += 1;
-    this.persistMutation();
+    void this.persistNow();
     return trade;
   }
 

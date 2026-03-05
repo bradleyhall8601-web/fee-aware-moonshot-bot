@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { config } from "./config";
-import { assertLiveWalletEnv, env, isMonitorOnlyLiveMode } from "./env";
+import { assertLiveWalletEnv, hasMonitorOnly, hasWallet, isDryRun, isLiveEnabled, isMonitorOnlyLiveMode } from "./env";
 import { MoonshotBot } from "./bot";
 import { logger } from "./logger";
 import { PaperTrader } from "./paper";
@@ -13,11 +13,16 @@ async function main(): Promise<void> {
   const persistedState = await loadPersistedState();
   logger.info("Loaded persisted state");
 
-  if (config.enableLiveTrading) {
+  if (isLiveEnabled()) {
     try {
       assertLiveWalletEnv();
     } catch (error) {
       logger.error({ err: error }, "Live trading wallet configuration error");
+      process.exit(1);
+    }
+
+    if (!isDryRun() && !hasWallet && !hasMonitorOnly) {
+      logger.error("Live trading requires WALLET_PRIVATE_KEY or WALLET_KEYPAIR_PATH when DRY_RUN=false");
       process.exit(1);
     }
 
@@ -27,13 +32,10 @@ async function main(): Promise<void> {
   }
 
   let walletPubkey = "unavailable";
-  if (config.enableLiveTrading) {
-    try {
-      walletPubkey = getWalletPubkey().toBase58();
-    } catch (error) {
-      logger.error({ err: error }, "Unable to derive wallet pubkey for live trading");
-      process.exit(1);
-    }
+  if (hasWallet) {
+    walletPubkey = getWalletPubkey().toBase58();
+  } else if (hasMonitorOnly) {
+    walletPubkey = "monitor-only";
   } else {
     try {
       walletPubkey = getWalletPubkey().toBase58();
@@ -42,7 +44,7 @@ async function main(): Promise<void> {
     }
   }
 
-  logger.info({ walletPubkey, liveTrading: config.enableLiveTrading, dryRun: config.dryRun }, "Runtime mode");
+  logger.info({ walletPubkey, liveTrading: isLiveEnabled(), dryRun: isDryRun() }, "Runtime mode");
 
   const trader = new PaperTrader(persistedState, async () => {
     await savePersistedState(trader.getState());

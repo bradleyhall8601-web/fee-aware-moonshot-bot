@@ -1,14 +1,15 @@
+import { Keypair } from "@solana/web3.js";
 import { config } from "./config";
-import { env, hasSigningWallet } from "./env";
+import { env, hasWallet, isDryRun, isLiveEnabled, isMonitorOnlyLiveMode } from "./env";
 import { filterCandidates } from "./filter";
 import { logger } from "./logger";
 import { PaperTrader } from "./paper";
 import { getSolBalance, getSolPriceUsd } from "./rpc";
 import { evaluateEntryRisk, evaluatePositionAction } from "./risk";
 import { fetchLatestSolanaPairs } from "./scanner";
-import { executeSwap } from "./swapper";
+import { executeSwapFromQuote, getQuote, isPriceImpactAcceptable } from "./swapper";
 import { DexPair } from "./types";
-import { getWalletPubkey } from "./wallet";
+import { getWalletKeypair, getWalletPubkey } from "./wallet";
 
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -25,7 +26,8 @@ export interface MoonshotBotOptions {
   persistState: () => Promise<void>;
   fetchPairs?: () => Promise<DexPair[]>;
   filterPairs?: (pairs: DexPair[]) => DexPair[];
-  executeSwapFn?: typeof executeSwap;
+  quoteFn?: typeof getQuote;
+  executeSwapFromQuoteFn?: typeof executeSwapFromQuote;
 }
 
 export class MoonshotBot {
@@ -68,6 +70,14 @@ export class MoonshotBot {
     }
   }
 
+  private getSignerWallet(): Keypair {
+    const wallet = getWalletKeypair();
+    if (!wallet) {
+      throw new Error("Live swap requires WALLET_PRIVATE_KEY or WALLET_KEYPAIR_PATH");
+    }
+    return wallet;
+  }
+
   async managePositionsTick(): Promise<void> {
     await this.updateWalletSnapshot();
     const monitored = this.trader.monitorOpenPositions();
@@ -85,27 +95,23 @@ export class MoonshotBot {
         const feeUsd = estimateFeeCostUsd(position.remainingSizeUsd * 0.5);
         let signature: string | undefined;
 
-        if (config.enableLiveTrading && hasSigningWallet()) {
+        if (isLiveEnabled() && hasWallet) {
           try {
             const amountRawHalf = position.amountRaw ? (BigInt(position.amountRaw) / 2n).toString() : undefined;
-            if (config.dryRun) {
-              logger.info(
-                {
-                  mint: position.mint,
-                  inputMint: position.mint,
-                  outputMint: WSOL_MINT,
-                  amountRaw: amountRawHalf
-                },
-                "DRY RUN would submit swap (partial sell simulation only)"
-              );
-            }
-            const out = await (this.options.executeSwapFn ?? executeSwap)(
+            const quote = await (this.options.quoteFn ?? getQuote)(
               position.mint,
               WSOL_MINT,
               Number(amountRawHalf ?? Math.max(1, Math.floor(position.remainingTokens * 500_000))),
               config.slippageBps
             );
-            signature = out.signature;
+            const out = await (this.options.executeSwapFromQuoteFn ?? executeSwapFromQuote)(
+              quote,
+              this.getSignerWallet(),
+              env.RPC_URL,
+              env.JUPITER_API_URL,
+              config.slippageBps
+            );
+            signature = out ?? undefined;
           } catch (error) {
             logger.error({ err: error, mint: position.mint }, "Partial sell failed; skipping mint");
             continue;
@@ -124,26 +130,22 @@ export class MoonshotBot {
       const feeUsd = estimateFeeCostUsd(position.remainingSizeUsd);
       let signature: string | undefined;
 
-      if (config.enableLiveTrading && hasSigningWallet()) {
+      if (isLiveEnabled() && hasWallet) {
         try {
-          if (config.dryRun) {
-            logger.info(
-              {
-                mint: position.mint,
-                inputMint: position.mint,
-                outputMint: WSOL_MINT,
-                amountRaw: position.amountRaw
-              },
-              "DRY RUN would submit swap (full exit simulation only)"
-            );
-          }
-          const out = await (this.options.executeSwapFn ?? executeSwap)(
+          const quote = await (this.options.quoteFn ?? getQuote)(
             position.mint,
             WSOL_MINT,
             Number(position.amountRaw ?? Math.max(1, Math.floor(position.remainingTokens * 1_000_000))),
             config.slippageBps
           );
-          signature = out.signature;
+          const out = await (this.options.executeSwapFromQuoteFn ?? executeSwapFromQuote)(
+            quote,
+            this.getSignerWallet(),
+            env.RPC_URL,
+            env.JUPITER_API_URL,
+            config.slippageBps
+          );
+          signature = out ?? undefined;
         } catch (error) {
           logger.error({ err: error, mint: position.mint }, "Exit swap failed; skipping mint");
           continue;
@@ -200,29 +202,53 @@ export class MoonshotBot {
       let signature: string | undefined;
       let outAmountRaw: string | undefined;
 
-      if (config.enableLiveTrading && hasSigningWallet()) {
+      if (isLiveEnabled()) {
+        if (isMonitorOnlyLiveMode()) {
+          logger.info({ mint: candidate.mint }, "Monitor-only mode: skipping live entry swap");
+          continue;
+        }
+
+        const inLamports = usdToLamports(decision.sizeUsd, snapshot.solUsd || config.solUsdFallback);
+
         try {
-          const inLamports = usdToLamports(decision.sizeUsd, snapshot.solUsd || config.solUsdFallback);
-          if (config.dryRun) {
-            logger.info(
-              {
-                mint: candidate.mint,
-                inputMint: WSOL_MINT,
-                outputMint: candidate.mint,
-                inLamports,
-                sizeUsd: decision.sizeUsd
-              },
-              "DRY RUN would submit swap (entry simulation only)"
-            );
-          }
-          const out = await (this.options.executeSwapFn ?? executeSwap)(
+          const quote = await (this.options.quoteFn ?? getQuote)(
             WSOL_MINT,
             candidate.mint,
             inLamports,
             config.slippageBps
           );
-          signature = out.signature;
-          outAmountRaw = out.outAmount;
+          if (!isPriceImpactAcceptable(quote)) {
+            logger.info({ mint: candidate.mint, priceImpactPct: quote.priceImpactPct }, "Live entry blocked by price impact");
+            continue;
+          }
+
+          if (isDryRun()) {
+            logger.info(
+              {
+                inputMint: quote.inputMint,
+                outputMint: quote.outputMint,
+                inAmount: quote.inAmount,
+                mint: candidate.mint
+              },
+              "DRY_RUN: would submit swap"
+            );
+            continue;
+          }
+
+          if (!hasWallet) {
+            logger.error({ mint: candidate.mint }, "Live entry skipped: signer wallet unavailable");
+            continue;
+          }
+
+          signature = await (this.options.executeSwapFromQuoteFn ?? executeSwapFromQuote)(
+            quote,
+            this.getSignerWallet(),
+            env.RPC_URL,
+            env.JUPITER_API_URL,
+            config.slippageBps
+          ) ?? undefined;
+          outAmountRaw = quote.outAmount;
+          logger.info({ mint: candidate.mint, signature }, "Live entry swap submitted");
         } catch (error) {
           logger.error({ err: error, mint: candidate.mint }, "Live entry failed; skipping mint");
           continue;
