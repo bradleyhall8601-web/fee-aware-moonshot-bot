@@ -88,6 +88,17 @@ export class MoonshotBot {
         if (config.enableLiveTrading) {
           try {
             const amountRawHalf = position.amountRaw ? (BigInt(position.amountRaw) / 2n).toString() : undefined;
+            if (config.dryRun) {
+              logger.info(
+                {
+                  mint: position.mint,
+                  inputMint: position.mint,
+                  outputMint: WSOL_MINT,
+                  amountRaw: amountRawHalf
+                },
+                "DRY_RUN partial sell: swap would be simulated and not submitted"
+              );
+            }
             const out = await (this.options.executeSwapFn ?? executeSwap)(
               position.mint,
               WSOL_MINT,
@@ -115,6 +126,17 @@ export class MoonshotBot {
 
       if (config.enableLiveTrading) {
         try {
+          if (config.dryRun) {
+            logger.info(
+              {
+                mint: position.mint,
+                inputMint: position.mint,
+                outputMint: WSOL_MINT,
+                amountRaw: position.amountRaw
+              },
+              "DRY_RUN full exit: swap would be simulated and not submitted"
+            );
+          }
           const out = await (this.options.executeSwapFn ?? executeSwap)(
             position.mint,
             WSOL_MINT,
@@ -181,6 +203,18 @@ export class MoonshotBot {
       if (config.enableLiveTrading) {
         try {
           const inLamports = usdToLamports(decision.sizeUsd, snapshot.solUsd || config.solUsdFallback);
+          if (config.dryRun) {
+            logger.info(
+              {
+                mint: candidate.mint,
+                inputMint: WSOL_MINT,
+                outputMint: candidate.mint,
+                inLamports,
+                sizeUsd: decision.sizeUsd
+              },
+              "DRY_RUN entry: swap would be simulated and not submitted"
+            );
+          }
           const out = await (this.options.executeSwapFn ?? executeSwap)(
             WSOL_MINT,
             candidate.mint,

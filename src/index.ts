@@ -70,11 +70,7 @@ async function main(): Promise<void> {
   }, 2_000);
 
   const scannerTimer = setInterval(() => {
-    void runSafely("scan", async () => {
-      // exits-first rule: always manage positions before scanning entries
-      await bot.managePositionsTick();
-      await bot.scanAndEnterTick();
-    });
+    void runSafely("scan", () => bot.scanAndEnterTick());
   }, 5_000);
 
   const healthTimer = setInterval(() => {
