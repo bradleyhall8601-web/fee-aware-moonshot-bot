@@ -1,25 +1,39 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "node:fs/promises";
+import path from "node:path";
+import { BotState } from "./types";
 
-const stateFilePath = path.join(__dirname, '../state.json');
+const STATE_PATH = path.resolve(process.cwd(), "state.json");
 
-function defaultState() {
-  return { positions: [], stats: {}, lastWalletSnapshot: null };
+export function defaultState(): BotState {
+  return {
+    positions: [],
+    closedPositions: 0,
+    paperBalanceUsd: 1_000,
+    lastCycleAtMs: 0
+  };
 }
 
-function loadPersistedState() {
-  if (!fs.existsSync(stateFilePath)) {
-    return defaultState();
+export async function loadPersistedState(): Promise<BotState> {
+  try {
+    const raw = await fs.readFile(STATE_PATH, "utf8");
+    const parsed = JSON.parse(raw) as Partial<BotState>;
+    return {
+      ...defaultState(),
+      ...parsed,
+      positions: Array.isArray(parsed.positions) ? parsed.positions : []
+    };
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === "ENOENT") {
+      return defaultState();
+    }
+    throw error;
   }
-  const tmpFilePath = `${stateFilePath}.tmp`;
-  const content = fs.readFileSync(stateFilePath, 'utf-8');
-  return JSON.parse(content);
 }
 
-function savePersistedState(state) {
-  const tmpFilePath = `${stateFilePath}.tmp`;
-  fs.writeFileSync(tmpFilePath, JSON.stringify(state));
-  fs.renameSync(tmpFilePath, stateFilePath);
+export async function savePersistedState(state: BotState): Promise<void> {
+  const tmpPath = `${STATE_PATH}.tmp`;
+  const payload = `${JSON.stringify(state, null, 2)}\n`;
+  await fs.writeFile(tmpPath, payload, "utf8");
+  await fs.rename(tmpPath, STATE_PATH);
 }
-
-export { loadPersistedState, savePersistedState };

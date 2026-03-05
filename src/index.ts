@@ -1,33 +1,48 @@
-// Existing content
+import { config } from "./config";
+import { MoonshotBot } from "./bot";
+import { logger } from "./logger";
+import { PaperTrader } from "./paper";
+import { loadPersistedState, savePersistedState } from "./persistence";
 
-// Implement scheduler ticks
-function runPositionsTick() {
-    // logic for positionsTick every 2s
+async function main(): Promise<void> {
+  logger.info("Fee-aware moonshot bot starting");
+
+  const persistedState = await loadPersistedState();
+  logger.info("Loaded persisted state");
+
+  const paperTrader = new PaperTrader(persistedState);
+  paperTrader.resume(persistedState);
+
+  const bot = new MoonshotBot(paperTrader);
+
+  const runCycle = async (): Promise<void> => {
+    await bot.runCycle();
+    await savePersistedState(paperTrader.getState());
+  };
+
+  await runCycle();
+  const interval = setInterval(() => {
+    runCycle().catch((error) => {
+      logger.error({ err: error }, "Cycle failure");
+    });
+  }, config.pollIntervalMs);
+
+  const shutdown = async (signal: string): Promise<void> => {
+    clearInterval(interval);
+    await savePersistedState(paperTrader.getState());
+    logger.info({ signal }, "Shutdown complete");
+    process.exit(0);
+  };
+
+  process.on("SIGINT", () => {
+    void shutdown("SIGINT");
+  });
+  process.on("SIGTERM", () => {
+    void shutdown("SIGTERM");
+  });
 }
 
-function runScannerTick() {
-    // logic for scannerTick every 5s
-}
-
-function runHealthTick() {
-    // logic for healthTick every 10s
-}
-
-// Split existing runCycle logic
-export function runCycle() {
-    // Logic for backward compatibility
-}
-
-export function runPositionsTick() {
-    // Logic for positions tick
-}
-
-export function runScannerTick() {
-    // Logic for scanner tick
-}
-
-// Set intervals
-setInterval(runPositionsTick, 2000);
-setInterval(runScannerTick, 5000);
-setInterval(runHealthTick, 10000);
-// Removed the single interval logic
+void main().catch((error) => {
+  logger.error({ err: error }, "Fatal startup error");
+  process.exit(1);
+});

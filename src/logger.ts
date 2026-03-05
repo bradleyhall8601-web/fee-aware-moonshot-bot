@@ -1,11 +1,16 @@
-import pino from 'pino';
-import { env } from './env';
+import pino from "pino";
 
-export const logger = pino(
-  {
-    level: env.LOG_LEVEL,
-  },
-  env.LOG_PRETTY
-    ? pino.transport({ target: 'pino-pretty', options: { colorize: true } })
-    : undefined,
-);
+const prettyEnabled = process.env.LOG_PRETTY !== "false";
+
+export const logger = pino({
+  level: process.env.LOG_LEVEL ?? "info",
+  transport: prettyEnabled
+    ? {
+        target: "pino-pretty",
+        options: {
+          colorize: false,
+          translateTime: "SYS:standard"
+        }
+      }
+    : undefined
+});
