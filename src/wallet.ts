@@ -1,10 +1,12 @@
 import fs from "node:fs";
+import path from "node:path";
 import bs58 from "bs58";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { env } from "./env";
 
-function loadSecretFromPath(path: string): Uint8Array {
-  const raw = fs.readFileSync(path, "utf8").trim();
+function loadSecretFromPath(filePath: string): Uint8Array {
+  const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
+  const raw = fs.readFileSync(resolved, "utf8").trim();
   const parsed = JSON.parse(raw) as number[];
   return Uint8Array.from(parsed);
 }

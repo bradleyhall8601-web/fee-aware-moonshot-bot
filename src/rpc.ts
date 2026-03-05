@@ -4,16 +4,21 @@ import { config } from "./config";
 import { env } from "./env";
 
 let connection: Connection | undefined;
+const COMMITMENT = "confirmed" as const;
+
+function getRpcEndpoint(): string {
+  return env.RPC_ENDPOINT || env.RPC_URL;
+}
 
 export function getConnection(): Connection {
   if (!connection) {
-    connection = new Connection(env.RPC_URL, "confirmed");
+    connection = new Connection(getRpcEndpoint(), COMMITMENT);
   }
   return connection;
 }
 
 export async function getSolBalance(pubkey: PublicKey): Promise<number> {
-  const lamports = await getConnection().getBalance(pubkey, "confirmed");
+  const lamports = await getConnection().getBalance(pubkey, COMMITMENT);
   return lamports / 1_000_000_000;
 }
 
