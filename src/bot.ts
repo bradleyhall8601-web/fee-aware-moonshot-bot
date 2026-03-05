@@ -191,8 +191,9 @@ export class MoonshotBot {
 
     for (const candidate of candidates) {
       const snapshot = this.trader.getState().lastWalletSnapshot;
+      const riskWalletUsd = isLiveEnabled() ? snapshot.walletUsd : this.trader.getState().paperBalanceUsd;
       const decision = evaluateEntryRisk({
-        walletUsd: snapshot.walletUsd,
+        walletUsd: riskWalletUsd,
         currentExposureUsd: this.trader.getExposureUsd(),
         openPositions: this.trader.getOpenCount()
       });

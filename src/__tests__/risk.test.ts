@@ -32,4 +32,16 @@ describe("risk sizing", () => {
     expect(decision.allowed).toBe(false);
     expect(decision.reason).toBe("max_positions");
   });
+
+  it("blocks entries when remaining budget is exhausted", () => {
+    const decision = evaluateEntryRisk({
+      walletUsd: 20,
+      currentExposureUsd: 20,
+      openPositions: 1
+    });
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toBe("budget_exhausted");
+    expect(decision.sizeUsd).toBe(0);
+  });
 });
