@@ -24,19 +24,30 @@ describe("persistence", () => {
       ...defaultState(),
       paperBalanceUsd: 777,
       lastCycleAtMs: Date.now(),
+      lastWalletSnapshot: {
+        solBalance: 1.23,
+        solUsd: 180,
+        walletUsd: 221.4,
+        updatedAtMs: Date.now()
+      },
+      seenPairs: ["pair-1"],
       positions: [
         {
+          pairAddress: "pair-1",
           mint: "mint-1",
           symbol: "M1",
           entryPriceUsd: 1,
           lastPriceUsd: 1.4,
           highWatermarkUsd: 1.4,
           sizeUsd: 50,
+          remainingSizeUsd: 25,
           amountTokens: 50,
+          remainingTokens: 25,
           amountRaw: "50000000",
           momentumFailCount: 0,
-          partialTaken: true,
+          hasTakenProfit: true,
           realizedPartialPnlUsd: 10,
+          partialExitTime: Date.now(),
           entryTxSig: "sig-entry",
           lastPartialTxSig: "sig-partial",
           openedAtMs: Date.now() - 1_000
@@ -46,10 +57,14 @@ describe("persistence", () => {
         {
           mint: "mint-1",
           symbol: "M1",
+          pairAddress: "pair-1",
           entryPriceUsd: 1,
           exitPriceUsd: 1.2,
           sizeUsd: 25,
+          isPartial: true,
           realizedPnlUsd: 4,
+          realizedPartialPnlUsd: 4,
+          partialExitTime: Date.now(),
           openedAtMs: Date.now() - 2_000,
           closedAtMs: Date.now(),
           reason: "trailing_stop" as const,
@@ -65,8 +80,11 @@ describe("persistence", () => {
     expect(loaded.paperBalanceUsd).toBe(777);
     expect(loaded.positions[0]?.entryTxSig).toBe("sig-entry");
     expect(loaded.positions[0]?.lastPartialTxSig).toBe("sig-partial");
-    expect(loaded.positions[0]?.partialTaken).toBe(true);
+    expect(loaded.positions[0]?.hasTakenProfit).toBe(true);
     expect(loaded.closedTrades[0]?.exitTxSig).toBe("sig-exit");
+    expect(loaded.seenPairs).toContain("pair-1");
+    const raw = await fs.readFile(statePath, "utf8");
+    expect(() => JSON.parse(raw)).not.toThrow();
     await expect(fs.access(tmpPath)).rejects.toThrow();
   });
 });

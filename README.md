@@ -5,10 +5,15 @@ Default mode is paper trading (`ENABLE_LIVE_TRADING=false`).
 ## Live Trading Safety
 
 - Live mode is opt-in with `ENABLE_LIVE_TRADING=true`.
-- You must provide wallet credentials with either `WALLET_PRIVATE_KEY` or `WALLET_KEYPAIR_PATH`.
+- Wallet can run in monitor-only mode with `WALLET_PUBKEY`, but live swaps require `WALLET_PRIVATE_KEY` or `WALLET_KEYPAIR_PATH`.
 - `RPC_URL` is required for live mode.
 - `DRY_RUN=true` in live mode will quote, build, sign, and simulate swaps but will not send transactions.
 - The bot never logs private keys.
+
+## Environment Setup
+
+- Copy defaults once if needed: `cp .env.example .env`
+- Keep `ENABLE_LIVE_TRADING=false` for safest paper-only operation.
 
 ## Runtime Notes
 
