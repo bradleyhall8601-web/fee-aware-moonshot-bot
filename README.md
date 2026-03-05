@@ -1,0 +1,17 @@
+# fee-aware-moonshot-bot
+
+Default mode is paper trading (`ENABLE_LIVE_TRADING=false`).
+
+## Live Trading Safety
+
+- Live mode is opt-in with `ENABLE_LIVE_TRADING=true`.
+- You must provide wallet credentials with either `WALLET_PRIVATE_KEY` or `WALLET_KEYPAIR_PATH`.
+- `RPC_URL` is required for live mode.
+- `DRY_RUN=true` in live mode will quote, build, sign, and simulate swaps but will not send transactions.
+- The bot never logs private keys.
+
+## Runtime Notes
+
+- Bot state persists at `./state.json` using atomic temp-file writes.
+- Exits are evaluated before scanning new entries.
+- At ~30% gain, positions take a 50% partial and keep a runner.
