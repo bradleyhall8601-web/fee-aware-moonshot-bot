@@ -19,6 +19,12 @@ describe("persistence", () => {
     expect(state).toEqual(defaultState());
   });
 
+  it("returns default state when state file contains invalid JSON", async () => {
+    await fs.writeFile(statePath, "{not-json", "utf8");
+    const state = await loadPersistedState();
+    expect(state).toEqual(defaultState());
+  });
+
   it("saves and loads state atomically", async () => {
     const input = {
       ...defaultState(),

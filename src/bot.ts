@@ -1,5 +1,5 @@
 import { config } from "./config";
-import { env } from "./env";
+import { env, hasSigningWallet } from "./env";
 import { filterCandidates } from "./filter";
 import { logger } from "./logger";
 import { PaperTrader } from "./paper";
@@ -85,7 +85,7 @@ export class MoonshotBot {
         const feeUsd = estimateFeeCostUsd(position.remainingSizeUsd * 0.5);
         let signature: string | undefined;
 
-        if (config.enableLiveTrading) {
+        if (config.enableLiveTrading && hasSigningWallet()) {
           try {
             const amountRawHalf = position.amountRaw ? (BigInt(position.amountRaw) / 2n).toString() : undefined;
             if (config.dryRun) {
@@ -96,7 +96,7 @@ export class MoonshotBot {
                   outputMint: WSOL_MINT,
                   amountRaw: amountRawHalf
                 },
-                "DRY_RUN partial sell: swap would be simulated and not submitted"
+                "DRY RUN would submit swap (partial sell simulation only)"
               );
             }
             const out = await (this.options.executeSwapFn ?? executeSwap)(
@@ -124,7 +124,7 @@ export class MoonshotBot {
       const feeUsd = estimateFeeCostUsd(position.remainingSizeUsd);
       let signature: string | undefined;
 
-      if (config.enableLiveTrading) {
+      if (config.enableLiveTrading && hasSigningWallet()) {
         try {
           if (config.dryRun) {
             logger.info(
@@ -134,7 +134,7 @@ export class MoonshotBot {
                 outputMint: WSOL_MINT,
                 amountRaw: position.amountRaw
               },
-              "DRY_RUN full exit: swap would be simulated and not submitted"
+              "DRY RUN would submit swap (full exit simulation only)"
             );
           }
           const out = await (this.options.executeSwapFn ?? executeSwap)(
@@ -200,7 +200,7 @@ export class MoonshotBot {
       let signature: string | undefined;
       let outAmountRaw: string | undefined;
 
-      if (config.enableLiveTrading) {
+      if (config.enableLiveTrading && hasSigningWallet()) {
         try {
           const inLamports = usdToLamports(decision.sizeUsd, snapshot.solUsd || config.solUsdFallback);
           if (config.dryRun) {
@@ -212,7 +212,7 @@ export class MoonshotBot {
                 inLamports,
                 sizeUsd: decision.sizeUsd
               },
-              "DRY_RUN entry: swap would be simulated and not submitted"
+              "DRY RUN would submit swap (entry simulation only)"
             );
           }
           const out = await (this.options.executeSwapFn ?? executeSwap)(

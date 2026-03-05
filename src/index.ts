@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { config } from "./config";
-import { assertLiveWalletEnv, env } from "./env";
+import { assertLiveWalletEnv, env, isMonitorOnlyLiveMode } from "./env";
 import { MoonshotBot } from "./bot";
 import { logger } from "./logger";
 import { PaperTrader } from "./paper";
@@ -19,6 +19,10 @@ async function main(): Promise<void> {
     } catch (error) {
       logger.error({ err: error }, "Live trading wallet configuration error");
       process.exit(1);
+    }
+
+    if (isMonitorOnlyLiveMode()) {
+      logger.warn("Monitor-only wallet mode: live trading enabled but no signer, swaps will not be submitted");
     }
   }
 

@@ -70,7 +70,7 @@ export async function executeSwap(
     }
 
     const signature = fakeDryRunSignature();
-    logger.info({ signature, inputMint, outputMint, inAmountLamports }, "DRY_RUN swap simulated");
+    logger.info({ signature, inputMint, outputMint, inAmountLamports }, "DRY RUN would submit swap (simulation only)");
     return { signature, outAmount: quote.outAmount };
   }
 
