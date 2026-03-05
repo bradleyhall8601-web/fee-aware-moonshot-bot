@@ -91,8 +91,20 @@ describe("persistence", () => {
     expect(loaded.seenPairs).toContain("pair-1");
     const raw = await fs.readFile(statePath, "utf8");
     expect(() => JSON.parse(raw)).not.toThrow();
-    const parsed = JSON.parse(raw) as { openPositions?: unknown[] };
+    const parsed = JSON.parse(raw) as {
+      openPositions?: unknown[];
+      stats?: unknown;
+      exposureUsd?: unknown;
+      lastWalletSnapshot?: unknown;
+      seenPairs?: unknown;
+      updatedAtMs?: unknown;
+    };
     expect(Array.isArray(parsed.openPositions)).toBe(true);
+    expect(parsed.stats).toBeDefined();
+    expect(typeof parsed.exposureUsd).toBe("number");
+    expect(parsed.lastWalletSnapshot).toBeDefined();
+    expect(Array.isArray(parsed.seenPairs)).toBe(true);
+    expect(typeof parsed.updatedAtMs).toBe("number");
     await expect(fs.access(tmpPath)).rejects.toThrow();
   });
 });
