@@ -33,22 +33,25 @@ export const env = {
   DRY_RUN: bool(process.env.DRY_RUN, false),
   WALLET_PRIVATE_KEY: optionalStr(process.env.WALLET_PRIVATE_KEY),
   WALLET_KEYPAIR_PATH: optionalStr(process.env.WALLET_KEYPAIR_PATH),
+  WALLET_PUBKEY: optionalStr(process.env.WALLET_PUBKEY),
   RPC_URL: str(process.env.RPC_URL, process.env.RPC_ENDPOINT ?? 'https://api.mainnet-beta.solana.com'),
   RPC_ENDPOINT: str(process.env.RPC_ENDPOINT, 'https://api.mainnet-beta.solana.com'),
+  BIRDEYE_API_KEY: optionalStr(process.env.BIRDEYE_API_KEY),
   JUPITER_API_URL: str(process.env.JUPITER_API_URL, 'https://quote-api.jup.ag/v6'),
   WATCHLIST_MINTS: list(process.env.WATCHLIST_MINTS),
-  MIN_LIQUIDITY_USDC: num(process.env.MIN_LIQUIDITY_USDC, 10_000),
-  MIN_VOLUME_1H: num(process.env.MIN_VOLUME_1H, 1_000),
-  MAX_VOLUME_1H: num(process.env.MAX_VOLUME_1H, 100_000),
-  MAX_FDV_RATIO: num(process.env.MAX_FDV_RATIO, 250_000),
-  MAX_TOKEN_AGE_HOURS: num(process.env.MAX_TOKEN_AGE_HOURS, 24),
-  MIN_PRICE_CHANGE_5M: num(process.env.MIN_PRICE_CHANGE_5M, 0),
-  MIN_TXNS: num(process.env.MIN_TXNS, 100),
-  MAX_TXNS: num(process.env.MAX_TXNS, 1_000),
-  MIN_BUYS: num(process.env.MIN_BUYS, 100),
-  MAX_BUYS: num(process.env.MAX_BUYS, 1_000),
-  MIN_SELLS: num(process.env.MIN_SELLS, 1),
-  MAX_SELLS: num(process.env.MAX_SELLS, 100),
+  MIN_LIQUIDITY_USD: num(process.env.MIN_LIQUIDITY_USD, 10_000),
+  MIN_VOLUME_M5_USD: num(process.env.MIN_VOLUME_M5_USD, 1_000),
+  MAX_VOLUME_M5_USD: num(process.env.MAX_VOLUME_M5_USD, 100_000),
+  MAX_FDV_USD: num(process.env.MAX_FDV_USD, 250_000),
+  MAX_PAIR_AGE_HOURS: num(process.env.MAX_PAIR_AGE_HOURS, 24),
+  MAX_SEEN_PAIRS: num(process.env.MAX_SEEN_PAIRS, 5_000),
+  REQUIRE_PRICE_UP_M5: bool(process.env.REQUIRE_PRICE_UP_M5, true),
+  MIN_TXNS_M5: num(process.env.MIN_TXNS_M5, 100),
+  MAX_TXNS_M5: num(process.env.MAX_TXNS_M5, 1_000),
+  MIN_BUYS_M5: num(process.env.MIN_BUYS_M5, 100),
+  MAX_BUYS_M5: num(process.env.MAX_BUYS_M5, 1_000),
+  MIN_SELLS_M5: num(process.env.MIN_SELLS_M5, 1),
+  MAX_SELLS_M5: num(process.env.MAX_SELLS_M5, 100),
   MAX_PRICE_IMPACT_PCT: num(process.env.MAX_PRICE_IMPACT_PCT, 5),
   SLIPPAGE_BPS: num(process.env.SLIPPAGE_BPS, 300),
   PROFIT_TARGET_PCT: num(process.env.PROFIT_TARGET_PCT, 30),
@@ -58,7 +61,7 @@ export const env = {
   WALLET_SPEND_CAP_USD: num(process.env.WALLET_SPEND_CAP_USD, 20),
   SIZING_LADDER: bool(process.env.SIZING_LADDER, true),
   NETWORK_FEE_USD_ESTIMATE: num(process.env.NETWORK_FEE_USD_ESTIMATE, 0.1),
-  SOL_PRICE_USD_ESTIMATE: num(process.env.SOL_PRICE_USD_ESTIMATE, 180),
+  SOL_USD_FALLBACK: num(process.env.SOL_USD_FALLBACK, 150),
   POLL_INTERVAL_MS: num(process.env.POLL_INTERVAL_MS, 5_000),
   LOG_LEVEL: str(process.env.LOG_LEVEL, 'info'),
   LOG_PRETTY: bool(process.env.LOG_PRETTY, false),
@@ -75,8 +78,9 @@ export function assertLiveWalletEnv(): void {
 
   const hasPrivateKey = Boolean(env.WALLET_PRIVATE_KEY);
   const hasKeypairPath = Boolean(env.WALLET_KEYPAIR_PATH);
-  if (!hasPrivateKey && !hasKeypairPath) {
-    throw new Error("Set WALLET_PRIVATE_KEY or WALLET_KEYPAIR_PATH for live trading");
+  const hasPubkey = Boolean(env.WALLET_PUBKEY);
+  if (!hasPrivateKey && !hasKeypairPath && !hasPubkey) {
+    throw new Error("Set WALLET_PRIVATE_KEY, WALLET_KEYPAIR_PATH, or WALLET_PUBKEY");
   }
 
   if (hasKeypairPath && !fs.existsSync(env.WALLET_KEYPAIR_PATH as string)) {
