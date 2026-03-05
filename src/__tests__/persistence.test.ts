@@ -85,6 +85,8 @@ describe("persistence", () => {
     expect(loaded.seenPairs).toContain("pair-1");
     const raw = await fs.readFile(statePath, "utf8");
     expect(() => JSON.parse(raw)).not.toThrow();
+    const parsed = JSON.parse(raw) as { openPositions?: unknown[] };
+    expect(Array.isArray(parsed.openPositions)).toBe(true);
     await expect(fs.access(tmpPath)).rejects.toThrow();
   });
 });

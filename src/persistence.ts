@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { config } from "./config";
 import { BotState, Position, Trade, WalletSnapshot } from "./types";
 
 const STATE_PATH = path.resolve(process.cwd(), "state.json");
@@ -123,10 +124,14 @@ function coerceWalletSnapshot(value: unknown): WalletSnapshot {
 export async function loadPersistedState(): Promise<BotState> {
   try {
     const raw = await fs.readFile(STATE_PATH, "utf8");
-    const parsed = JSON.parse(raw) as Partial<BotState>;
+    const parsed = JSON.parse(raw) as Partial<BotState> & { openPositions?: unknown[] };
 
-    const positions = Array.isArray(parsed.positions)
-      ? parsed.positions.map(coercePosition).filter((entry): entry is Position => entry !== null)
+    const persistedPositions = Array.isArray(parsed.openPositions)
+      ? parsed.openPositions
+      : parsed.positions;
+
+    const positions = Array.isArray(persistedPositions)
+      ? persistedPositions.map(coercePosition).filter((entry): entry is Position => entry !== null)
       : [];
     const closedTrades = Array.isArray(parsed.closedTrades)
       ? parsed.closedTrades.map(coerceTrade).filter((entry): entry is Trade => entry !== null)
@@ -134,6 +139,7 @@ export async function loadPersistedState(): Promise<BotState> {
     const seenPairs = Array.isArray(parsed.seenPairs)
       ? parsed.seenPairs.filter((entry): entry is string => typeof entry === "string")
       : [];
+    const boundedSeenPairs = seenPairs.slice(Math.max(0, seenPairs.length - config.maxSeenPairs));
 
     const stats = (parsed.stats ?? {}) as Partial<BotState["stats"]>;
 
@@ -148,7 +154,7 @@ export async function loadPersistedState(): Promise<BotState> {
         tradeCount: toNumber(stats.tradeCount, closedTrades.length),
         totalPnlUsd: toNumber(stats.totalPnlUsd, closedTrades.reduce((sum, t) => sum + t.realizedPnlUsd, 0))
       },
-      seenPairs,
+      seenPairs: boundedSeenPairs,
       lastWalletSnapshot: coerceWalletSnapshot(parsed.lastWalletSnapshot),
       lastCycleAtMs: toNumber(parsed.lastCycleAtMs, 0),
       updatedAtMs: toNumber(parsed.updatedAtMs, 0)
@@ -164,8 +170,16 @@ export async function loadPersistedState(): Promise<BotState> {
 
 export async function savePersistedState(state: BotState): Promise<void> {
   const tmpPath = `${STATE_PATH}.tmp`;
-  state.updatedAtMs = Date.now();
-  const payload = `${JSON.stringify(state, null, 2)}\n`;
+  const updatedAtMs = Date.now();
+  state.updatedAtMs = updatedAtMs;
+
+  const payloadState = {
+    ...state,
+    openPositions: state.positions,
+    updatedAtMs
+  };
+
+  const payload = `${JSON.stringify(payloadState, null, 2)}\n`;
   await fs.writeFile(tmpPath, payload, "utf8");
   await fs.rename(tmpPath, STATE_PATH);
 }
