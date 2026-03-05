@@ -22,6 +22,18 @@ function usdToLamports(usd: number, solUsd: number): number {
   return Math.max(1, Math.floor((usd / safePrice) * 1_000_000_000));
 }
 
+function normalizeRawAmount(value?: string, fallback = 1): number {
+  if (!value) {
+    return Math.max(1, fallback);
+  }
+  try {
+    const raw = BigInt(value);
+    return Number(raw > 0n ? raw : 1n);
+  } catch {
+    return Math.max(1, fallback);
+  }
+}
+
 export interface MoonshotBotOptions {
   persistState: () => Promise<void>;
   fetchPairs?: () => Promise<DexPair[]>;
@@ -102,11 +114,11 @@ export class MoonshotBot {
 
         if (isLiveEnabled() && hasWallet) {
           try {
-            const amountRawHalf = position.amountRaw ? (BigInt(position.amountRaw) / 2n).toString() : undefined;
+            const halfRaw = position.amountRaw ? (BigInt(position.amountRaw) / 2n).toString() : undefined;
             const quote = await (this.options.quoteFn ?? getQuote)(
               position.mint,
               WSOL_MINT,
-              Number(amountRawHalf ?? Math.max(1, Math.floor(position.remainingTokens * 500_000))),
+              normalizeRawAmount(halfRaw, Math.floor(position.remainingTokens * 500_000)),
               config.slippageBps
             );
             const out = await (this.options.executeSwapFromQuoteFn ?? executeSwapFromQuote)(
@@ -140,7 +152,7 @@ export class MoonshotBot {
           const quote = await (this.options.quoteFn ?? getQuote)(
             position.mint,
             WSOL_MINT,
-            Number(position.amountRaw ?? Math.max(1, Math.floor(position.remainingTokens * 1_000_000))),
+            normalizeRawAmount(position.amountRaw, Math.floor(position.remainingTokens * 1_000_000)),
             config.slippageBps
           );
           const out = await (this.options.executeSwapFromQuoteFn ?? executeSwapFromQuote)(
