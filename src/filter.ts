@@ -2,6 +2,8 @@ import { config } from "./config";
 import { DexPair } from "./types";
 
 export function filterCandidates(pairs: DexPair[]): DexPair[] {
+  const minPriceChangeM5 = config.requirePriceUpM5 ? Math.max(config.minPriceChangeM5, Number.EPSILON) : config.minPriceChangeM5;
+
   return pairs.filter(
     (pair) =>
       Number.isFinite(pair.pairCreatedAt) &&
@@ -17,7 +19,7 @@ export function filterCandidates(pairs: DexPair[]): DexPair[] {
       pair.sellsM5 >= config.minSellsM5 &&
       pair.sellsM5 <= config.maxSellsM5 &&
       (pair.fdvUsd === undefined || pair.fdvUsd <= config.maxFdvUsd) &&
-      (!config.requirePriceUpM5 || pair.priceChangeM5Pct > 0) &&
+      pair.priceChangeM5Pct >= minPriceChangeM5 &&
       (pair.fdvUsd === undefined || pair.liquidityUsd >= pair.fdvUsd * config.minLiquidityToFdvRatio) &&
       pair.sellsM5 <= pair.buysM5 * config.maxSellsToBuysRatio
   );

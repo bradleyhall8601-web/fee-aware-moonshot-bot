@@ -12,6 +12,7 @@ export const config = {
   maxPairAgeHours: env.MAX_PAIR_AGE_HOURS,
   maxSeenPairs: env.MAX_SEEN_PAIRS,
   requirePriceUpM5: env.REQUIRE_PRICE_UP_M5,
+  minPriceChangeM5: env.MIN_PRICE_CHANGE_M5,
   minTxnsM5: env.MIN_TXNS_M5,
   maxTxnsM5: env.MAX_TXNS_M5,
   minBuysM5: env.MIN_BUYS_M5,

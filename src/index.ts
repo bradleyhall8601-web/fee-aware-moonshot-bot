@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { config } from "./config";
-import { assertLiveWalletEnv } from "./env";
+import { assertLiveWalletEnv, env } from "./env";
 import { MoonshotBot } from "./bot";
 import { logger } from "./logger";
 import { PaperTrader } from "./paper";
@@ -14,14 +14,22 @@ async function main(): Promise<void> {
   logger.info("Loaded persisted state");
 
   if (config.enableLiveTrading) {
+    if (!env.WALLET_PRIVATE_KEY) {
+      logger.error("Wallet not configured: set WALLET_PRIVATE_KEY when ENABLE_LIVE_TRADING=true");
+      process.exit(1);
+    }
     assertLiveWalletEnv();
   }
 
   let walletPubkey = "unavailable";
-  try {
+  if (config.enableLiveTrading) {
     walletPubkey = getWalletPubkey().toBase58();
-  } catch {
+  } else {
+    try {
+      walletPubkey = getWalletPubkey().toBase58();
+    } catch {
     // pubkey remains unavailable in fully anonymous paper mode
+    }
   }
 
   logger.info({ walletPubkey, liveTrading: config.enableLiveTrading, dryRun: config.dryRun }, "Runtime mode");
