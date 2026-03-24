@@ -10,16 +10,24 @@
     "health": "tsx src/index.ts health",
     "lint": "node -e \"console.log('lint: not configured')\""
   },
-  "keywords": ["solana", "trading", "meme", "bot"],
+  "keywords": [
+    "solana",
+    "trading",
+    "meme",
+    "bot"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "@solana/spl-token": "^0.4.8",
     "@solana/web3.js": "^1.91.0",
+    "@types/pg": "^8.20.0",
     "axios": "^1.7.4",
     "dotenv": "^16.4.5",
+    "pg": "^8.20.0",
     "pino": "^8.20.0",
-    "pino-pretty": "^10.3.1"
+    "pino-pretty": "^10.3.1",
+    "telegraf": "^4.16.3"
   },
   "devDependencies": {
     "@types/node": "^20.11.5",
