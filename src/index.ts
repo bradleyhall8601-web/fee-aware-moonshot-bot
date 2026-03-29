@@ -1,12 +1,12 @@
 // src/index.ts
-// Main entry point for the fee-aware moonshot bot (PAPER TRADING MODE).
+// Main entry point for the fee-aware moonshot bot (MULTI-USER PRODUCTION SYSTEM).
 
 import * as dotenv from "dotenv";
 dotenv.config();
 
-import { config } from "./config";
-import State from "./state";
-import { manageStopLoss, monitorFallback } from "./risk";
+import botOrchestrator from "./bot-orchestrator";
+import telemetryLogger from "./telemetry";
+import database from "./database";
 
 // ── Paper Trading Mode Safety Guard ──────────────────────────────────────────
 // This bot runs in PAPER TRADING mode by default (no real funds at risk).
@@ -19,28 +19,37 @@ function log(msg: string): void {
 
 // ── Health check mode ────────────────────────────────────────────────────────
 async function runHealthCheck(): Promise<void> {
-  const health = {
-    ok: true,
-    mode: LIVE_TRADING_ENABLED ? "live" : "paper",
-    timestamp: new Date().toISOString(),
-    config: {
-      minLiquidityUsd: config.minLiquidityUsd,
-      maxPoolAgeMs: config.maxPoolAgeMs,
-      preferWindow: config.preferWindow,
-      minTxns: config.minTxns,
-      maxTxns: config.maxTxns,
-    },
-    state: {
-      balances: Object.keys(State.balances).length,
-      orders: State.orders.length,
-    },
-  };
+  try {
+    const users = database.getAllActiveUsers();
+    const sessions = users.flatMap(u => database.getUserTradingSessions(u.id));
 
-  console.log(JSON.stringify(health, null, 2));
-  process.exit(health.ok ? 0 : 1);
+    const health = {
+      ok: true,
+      mode: "multi-user-production",
+      timestamp: new Date().toISOString(),
+      system: {
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        platform: process.platform,
+      },
+      bot: {
+        activeUsers: users.length,
+        activeTrades: sessions.filter(s => s.status === 'open').length,
+        totalProfit: sessions
+          .filter(s => s.status === 'closed')
+          .reduce((sum, s) => sum + (s.profit || 0), 0),
+      },
+    };
+
+    console.log(JSON.stringify(health, null, 2));
+    process.exit(0);
+  } catch (err) {
+    console.error('Health check failed:', err);
+    process.exit(1);
+  }
 }
 
-// ── Main loop ────────────────────────────────────────────────────────────────
+// ── Main entry point ────────────────────────────────────────────────────────
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -49,39 +58,24 @@ async function main(): Promise<void> {
     return;
   }
 
-  log("=== Fee-Aware Moonshot Bot ===");
-  log(`Mode: ${LIVE_TRADING_ENABLED ? "LIVE TRADING" : "PAPER TRADING (safe mode – no real funds at risk)"}`);
-  log(`Config: minLiquidity=${config.minLiquidityUsd}, minTxns=${config.minTxns}, maxTxns=${config.maxTxns}`);
+  telemetryLogger.info("🚀 Fee-Aware Moonshot Bot - Multi-User Production System", "main");
+  telemetryLogger.info(`Environment: ${process.env.NODE_ENV || 'development'}`, "main");
+  telemetryLogger.info(`Live Trading: ${process.env.ENABLE_LIVE_TRADING === 'true' ? '🟢 ENABLED' : '🔴 DISABLED (Paper Mode)'}`, "main");
 
-  // Graceful shutdown
-  const shutdown = (): void => {
-    log("[shutdown] Stopping…");
-    process.exit(0);
+  // Graceful shutdown handler
+  const shutdown = async (): Promise<void> => {
+    telemetryLogger.info("Shutting down gracefully...", "main");
+    await botOrchestrator.shutdown();
   };
 
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+  process.on("uncaughtException", (err) => {
+    telemetryLogger.error("Uncaught exception", "main", err);
+  });
 
-  // Main trading loop (placeholder)
-  let tickCount = 0;
-  const pollInterval = 5000;
-
-  const interval = setInterval(async () => {
-    try {
-      tickCount++;
-      log(`[tick ${tickCount}] Bot running in ${LIVE_TRADING_ENABLED ? "LIVE" : "PAPER"} mode...`);
-
-      // Periodic status output
-      if (tickCount % 12 === 0) {
-        log(`[status] State - Balances: ${Object.keys(State.balances).length}, Orders: ${State.orders.length}`);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      log(`[loop] Error: ${msg}`);
-    }
-  }, pollInterval);
-
-  log(`[init] Bot started. Polling every ${pollInterval}ms...`);
+  // Start the bot
+  await botOrchestrator.start();
 }
 
 main().catch((err) => {

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fee-Aware Moonshot Bot - Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      color: #fff;
+      min-height: 100vh;
+    }
+
+    header {
+      background: rgba(0, 0, 0, 0.5);
+      padding: 1.5rem;
+      border-bottom: 2px solid #00ff88;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    header h1 {
+      font-size: 2rem;
+      background: linear-gradient(90deg, #00ff88, #00d4ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(0, 255, 136, 0.2);
+      border-radius: 12px;
+      padding: 1.5rem;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+    }
+
+    .card:hover {
+      border-color: rgba(0, 255, 136, 0.5);
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateY(-4px);
+    }
+
+    .card h2 {
+      font-size: 0.875rem;
+      color: #00ff88;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .card-value {
+      font-size: 2rem;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+
+    .card-label {
+      font-size: 0.875rem;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-top: 1rem;
+    }
+
+    .status-ok {
+      background: rgba(0, 255, 136, 0.2);
+      color: #00ff88;
+      border: 1px solid #00ff88;
+    }
+
+    .status-warn {
+      background: rgba(255, 193, 7, 0.2);
+      color: #ffc107;
+      border: 1px solid #ffc107;
+    }
+
+    .status-error {
+      background: rgba(255, 77, 77, 0.2);
+      color: #ff4d4d;
+      border: 1px solid #ff4d4d;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1.5rem;
+    }
+
+    th {
+      background: rgba(0, 255, 136, 0.1);
+      padding: 1rem;
+      text-align: left;
+      color: #00ff88;
+      border-bottom: 2px solid rgba(0, 255, 136, 0.3);
+    }
+
+    td {
+      padding: 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    tr:hover {
+      background: rgba(0, 255, 136, 0.05);
+    }
+
+    .btn {
+      background: linear-gradient(90deg, #00ff88, #00d4ff);
+      color: #000;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 255, 136, 0.3);
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: #00ff88;
+    }
+
+    .error {
+      background: rgba(255, 77, 77, 0.1);
+      border: 1px solid #ff4d4d;
+      color: #ff6b6b;
+      padding: 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(0, 255, 136, 0.3);
+      border-top-color: #00ff88;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      border-bottom: 2px solid rgba(0, 255, 136, 0.2);
+    }
+
+    .tab {
+      padding: 1rem;
+      cursor: pointer;
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 1rem;
+      border-bottom: 3px solid transparent;
+      transition: all 0.3s ease;
+    }
+
+    .tab.active {
+      color: #00ff88;
+      border-bottom-color: #00ff88;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🤖 Fee-Aware Moonshot Bot Dashboard</h1>
+    <p>Multi-User Solana Trading System</p>
+  </header>
+
+  <div class="container">
+    <!-- System Status -->
+    <div id="status-container" class="dashboard-grid"></div>
+
+    <!-- Navigation Tabs -->
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('overview')">Overview</button>
+      <button class="tab" onclick="switchTab('users')">Users</button>
+      <button class="tab" onclick="switchTab('market')">Market</button>
+      <button class="tab" onclick="switchTab('logs')">Logs</button>
+    </div>
+
+    <!-- Overview Tab -->
+    <div id="overview" class="tab-content active">
+      <div class="dashboard-grid" id="overview-content"></div>
+    </div>
+
+    <!-- Users Tab -->
+    <div id="users" class="tab-content">
+      <div id="users-content"></div>
+    </div>
+
+    <!-- Market Tab -->
+    <div id="market" class="tab-content">
+      <div id="market-content"></div>
+    </div>
+
+    <!-- Logs Tab -->
+    <div id="logs" class="tab-content">
+      <div id="logs-content"></div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:3000/api';
+
+    async function loadDashboard() {
+      try {
+        const status = await fetch(`${API_URL}/system/status`).then(r => r.json());
+        renderStatus(status);
+        
+        const users = await fetch(`${API_URL}/users`).then(r => r.json());
+        renderUsers(users);
+
+        const moonshots = await fetch(`${API_URL}/market/moonshots`).then(r => r.json());
+        renderMoonshots(moonshots);
+
+        const logs = await fetch(`${API_URL}/system/logs`).then(r => r.json());
+        renderLogs(logs);
+      } catch (err) {
+        console.error('Dashboard error:', err);
+        document.getElementById('status-container').innerHTML = `<div class="error">Failed to load dashboard data</div>`;
+      }
+    }
+
+    function renderStatus(status) {
+      const html = `
+        <div class="card">
+          <h2>Active Users</h2>
+          <div class="card-value">${status.activeUsers}</div>
+          <div class="card-label">Currently trading</div>
+          <div class="status-badge status-ok">✓ Online</div>
+        </div>
+        <div class="card">
+          <h2>Active Trades</h2>
+          <div class="card-value">${status.activeTrades}</div>
+          <div class="card-label">Open positions</div>
+        </div>
+        <div class="card">
+          <h2>Total Profit</h2>
+          <div class="card-value">$${status.totalProfit.toFixed(2)}</div>
+          <div class="card-label">All time</div>
+        </div>
+        <div class="card">
+          <h2>System Uptime</h2>
+          <div class="card-value">${(status.uptime / 3600).toFixed(1)}h</div>
+          <div class="card-label">Running time</div>
+        </div>
+      `;
+      document.getElementById('status-container').innerHTML = html;
+    }
+
+    function renderUsers(users) {
+      if (!users || users.length === 0) {
+        document.getElementById('users-content').innerHTML = '<p>No users registered yet</p>';
+        return;
+      }
+
+      let html = '<table><thead><tr><th>Username</th><th>Wallet</th><th>Registered</th><th>Status</th></tr></thead><tbody>';
+      users.forEach(user => {
+        html += `
+          <tr>
+            <td>${user.username}</td>
+            <td>${user.walletAddress.slice(0, 8)}...</td>
+            <td>${new Date(user.createdAt).toLocaleDateString()}</td>
+            <td><span class="status-badge status-ok">Active</span></td>
+          </tr>
+        `;
+      });
+      html += '</tbody></table>';
+      document.getElementById('users-content').innerHTML = html;
+    }
+
+    function renderMoonshots(candidates) {
+      if (!candidates || candidates.length === 0) {
+        document.getElementById('market-content').innerHTML = '<p>No moonshot candidates found</p>';
+        return;
+      }
+
+      let html = '<table><thead><tr><th>Token</th><th>Price</th><th>Liquidity</th><th>24h Volume</th><th>Confidence</th></tr></thead><tbody>';
+      candidates.slice(0, 10).forEach(token => {
+        html += `
+          <tr>
+            <td>${token.symbol}</td>
+            <td>$${token.price.toFixed(8)}</td>
+            <td>$${(token.liquidity / 1000).toFixed(1)}K</td>
+            <td>$${(token.volume24h / 1000).toFixed(1)}K</td>
+            <td><strong>${token.confidence}%</strong></td>
+          </tr>
+        `;
+      });
+      html += '</tbody></table>';
+      document.getElementById('market-content').innerHTML = html;
+    }
+
+    function renderLogs(data) {
+      const lines = data.logs.split('\n').slice(-50);
+      let html = '<pre style="background: rgba(0,0,0,0.5); padding: 1rem; border-radius: 6px; overflow-x: auto; max-height: 500px;">';
+      lines.forEach(line => {
+        if (line.includes('ERROR') || line.includes('error')) {
+          html += `<span style="color: #ff4d4d;">${line}\n</span>`;
+        } else if (line.includes('WARN') || line.includes('warn')) {
+          html += `<span style="color: #ffc107;">${line}\n</span>`;
+        } else {
+          html += line + '\n';
+        }
+      });
+      html += '</pre>';
+      document.getElementById('logs-content').innerHTML = html;
+    }
+
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      
+      event.target.classList.add('active');
+      document.getElementById(tabName).classList.add('active');
+    }
+
+    // Load dashboard on page load
+    loadDashboard();
+
+    // Refresh every 30 seconds
+    setInterval(loadDashboard, 30000);
+  </script>
+</body>
+</html>

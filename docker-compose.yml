@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: fee-aware-moonshot-bot
+    restart: always
+    environment:
+      NODE_ENV: production
+      ENABLE_LIVE_TRADING: "false"
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      LOG_LEVEL: info
+      POLL_INTERVAL_MS: 5000
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - bot-network
+    healthcheck:
+      test: ["CMD", "npm", "run", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: PostgreSQL for scaling to multiple servers
+  postgres:
+    image: postgres:15-alpine
+    container_name: bot-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: bot_db
+      POSTGRES_USER: bot_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - bot-network
+    profiles:
+      - postgres  # Run with: docker-compose --profile postgres up
+
+networks:
+  bot-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
