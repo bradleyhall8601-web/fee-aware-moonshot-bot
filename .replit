@@ -1,0 +1,17 @@
+run = "npm run dev"
+entrypoint = "src/index.ts"
+
+[env]
+NPM_CONFIG_PREFIX = "/home/runner/.npm-global"
+
+[nix]
+channel = "stable-23_11"
+
+[unitTest]
+language = "nodejs"
+
+[languages.javascript]
+pattern = "**/{*.js,*.jsx,*.ts,*.tsx}"
+
+[languages.javascript.languageServer]
+start = "typescript-language-server --stdio"
