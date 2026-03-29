@@ -1,0 +1,78 @@
+# Docker Compose Configuration
+# For running the bot with proper environment isolation
+
+version: '3.8'
+
+services:
+  moonshot-bot:
+    build:
+      context: ../../
+      dockerfile: deployment/docker/Dockerfile
+    
+    container_name: fee-aware-moonshot-bot
+    
+    restart: always
+    
+    # Environment variables
+    environment:
+      - NODE_ENV=production
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      - SOLANA_NETWORK=${SOLANA_NETWORK:-mainnet-beta}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_ORG_ID=${OPENAI_ORG_ID}
+      - API_PORT=3000
+      - API_HOST=0.0.0.0
+      - DB_PATH=/data/trades.db
+      - LIVE_TRADING_ENABLED=${LIVE_TRADING_ENABLED:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    
+    # Port mapping
+    ports:
+      - "3000:3000"
+    
+    # Volume mounts for persistence
+    volumes:
+      - ./data:/data                    # Database storage
+      - ./logs:/logs                    # Application logs
+      - ./config:/app/config            # Configuration files
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
+    
+    # Network
+    networks:
+      - moonshot-network
+
+networks:
+  moonshot-network:
+    driver: bridge
+
+volumes:
+  data:
+    driver: local
+  logs:
+    driver: local

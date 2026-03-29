@@ -67,12 +67,8 @@ class BotOrchestrator {
       telemetryLogger.info('Telegram Bot initialized', 'orchestrator');
     }
 
-    // Initialize AI Monitor
-    const openaiKey = process.env.OPENAI_API_KEY;
-    if (openaiKey) {
-      await aiMonitor.initialize(telegramBot);
-      telemetryLogger.info('AI Monitor initialized', 'orchestrator');
-    }
+    // AI Monitor disabled - OpenAI subscription pending
+    // await aiMonitor.initialize(telegramBot);
 
     telemetryLogger.info('All systems initialized', 'orchestrator');
   }
@@ -97,9 +93,12 @@ class BotOrchestrator {
 
   private startMonitoringLoop(): void {
     // Monitor bot health every 30 seconds
+    // NOTE: AI monitoring can be enabled with ENABLE_AI_MONITOR=true
     this.monitorInterval = setInterval(async () => {
       try {
-        await aiMonitor.monitorAndAnalyze();
+        if (process.env.ENABLE_AI_MONITOR === 'true') {
+          await aiMonitor.monitorAndAnalyze();
+        }
       } catch (err) {
         telemetryLogger.error('Monitoring error', 'orchestrator', err);
       }
@@ -136,32 +135,51 @@ class BotOrchestrator {
     const users = userManager.getAllActiveUsers();
 
     for (const user of users) {
-      const config = userManager.getUserConfig(user.id);
-      if (!config) continue;
+      try {
+        const config = userManager.getUserConfig(user.id);
+        if (!config || !config.enableLiveTrading) continue;
 
-      // For each user, analyze new opportunities and manage existing trades
-      // This is simplified - in production would fetch real market data
+        // Fetch real moonshot candidates from DEX APIs
+        const moonshotCandidates = await dexMarketData.getMoonshotCandidates();
 
-      // Find potential moonshot
-      const mints = ['EPjFWaJauUf64V8DwYYAstX...', 'TokenMint2', 'TokenMint3']; // Example mints
+        if (moonshotCandidates.length === 0) {
+          telemetryLogger.debug('No moonshot candidates found', 'orchestrator');
+          continue;
+        }
 
-      for (const mint of mints) {
-        const signal = await tradingEngine.analyzeMoonshot(mint);
-        if (signal && signal.type === 'BUY') {
-          // Execute trade if conditions met
-          const success = await tradingEngine.executeBuyTrade(user.id, signal, 1000); // Assume $1000 portfolio
+        // Filter top candidates (confidence > 70)
+        const topCandidates = moonshotCandidates
+          .filter(c => c.confidence > 70)
+          .slice(0, 5);
 
-          if (success && config.enableLiveTrading) {
-            // Notify user
-            const message = `🟢 *BUY SIGNAL*\nToken: ${mint}\nPrice: $${signal.price.toFixed(6)}\nConfidence: ${signal.confidence}%`;
-            await telegramBot.sendUserNotification(user.id, message);
+        // Process each candidate for this user
+        for (const candidate of topCandidates) {
+          const signal = await tradingEngine.analyzeMoonshot(candidate.mint);
+          
+          if (signal && signal.type === 'BUY') {
+            // Execute trade if conditions met
+            const success = await tradingEngine.executeBuyTrade(user.id, signal, (config.tradeSize as number) || 1000);
+
+            if (success) {
+              // Notify user
+              const message = `🟢 *BUY SIGNAL*\nToken: ${candidate.name}\nPrice: $${candidate.price.toFixed(8)}\nLiquidity: $${candidate.liquidity.toLocaleString()}\nConfidence: ${candidate.confidence}%`;
+              await telegramBot.sendUserNotification(user.id, message);
+            }
           }
         }
-      }
 
-      // Manage existing trades
-      const prices = new Map<string, number>(); // Would come from real market data
-      await tradingEngine.manageTrades(user.id, prices);
+        // Manage existing trades with real market prices
+        const prices = new Map<string, number>();
+        for (const candidate of moonshotCandidates) {
+          prices.set(candidate.mint, candidate.price);
+        }
+        await tradingEngine.manageTrades(user.id, prices);
+      } catch (error) {
+        telemetryLogger.error(
+          `Trade cycle error for user ${user.id}: ${error}`,
+          'orchestrator'
+        );
+      }
     }
   }
 

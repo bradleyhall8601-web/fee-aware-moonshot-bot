@@ -33,6 +33,7 @@ interface UserConfig {
   profitTargetPct: number;
   trailingStopPct: number;
   enableLiveTrading: boolean;
+  tradeSize?: number;
   createdAt: number;
   updatedAt: number;
 }

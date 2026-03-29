@@ -8,6 +8,9 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "health": "tsx src/index.ts health",
+    "test": "jest --detectOpenHandles --forceExit",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "lint": "node -e \"console.log('lint: not configured')\"",
     "docker:build": "docker build -t fee-aware-moonshot-bot:latest .",
     "docker:up": "docker-compose up -d",
@@ -50,8 +53,14 @@
     "winston": "^3.19.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^20.11.5",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.19.37",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   }

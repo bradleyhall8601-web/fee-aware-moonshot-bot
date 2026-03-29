@@ -33,7 +33,7 @@ class EncryptionService {
       let encrypted = cipher.update(data);
       encrypted = Buffer.concat([encrypted, cipher.final()]);
 
-      const authTag = cipher.getAuthTag();
+      const authTag = (cipher as any).getAuthTag();
 
       // Combine iv + authTag + encrypted
       const combined = Buffer.concat([iv, authTag, encrypted]);
@@ -58,7 +58,7 @@ class EncryptionService {
         iv
       );
 
-      decipher.setAuthTag(authTag);
+      (decipher as any).setAuthTag(authTag);
 
       let decrypted = decipher.update(encrypted);
       decrypted = Buffer.concat([decrypted, decipher.final()]);

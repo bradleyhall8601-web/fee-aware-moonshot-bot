@@ -97,7 +97,7 @@ class MultiUserTelegramBot {
       });
 
       // Handle callbacks - MUST be after on('text')
-      this.bot.action(/.*/, (ctx) => {
+      this.bot.on('callback_query', (ctx) => {
         console.log(`🔘 [TELEGRAM] Callback from @${ctx.from?.username} (${ctx.from?.id}): ${(ctx.callbackQuery as any)?.data}`);
         return this.handleCallback.call(this, ctx);
       });
@@ -403,43 +403,61 @@ ${trade.exitPrice ? `Exit: $${trade.exitPrice.toFixed(6)}\nProfit: ${trade.profi
   }
 
   private async handleCallback(ctx: Context): Promise<void> {
-    const data = (ctx.callbackQuery as any)?.data;
-    const telegramId = String(ctx.from?.id);
-    const username = ctx.from?.username || 'unknown';
-    
-    console.log(`[CALLBACK] From ${telegramId}, action: ${data}`);
-    telegramDebug.log('callback', telegramId, username, `Callback: ${data}`);
-    
-    await ctx.answerCbQuery();
+    try {
+      const data = (ctx.callbackQuery as any)?.data;
+      const telegramId = String(ctx.from?.id);
+      const username = ctx.from?.username || 'unknown';
+      
+      console.log(`[CALLBACK] From ${telegramId}, action: ${data}`);
+      telegramDebug.log('callback', telegramId, username, `Callback: ${data}`);
+      
+      // Always answer the callback query first to remove the loading state
+      try {
+        await ctx.answerCbQuery();
+      } catch (err) {
+        console.error(`[CALLBACK ERROR] Failed to answer callback query:`, err);
+      }
 
-    // Handle registration flow callbacks
-    if (data?.startsWith('wallet_') || data === 'confirm_generated' || data === 'confirm_imported' || data === 'cancel_registration') {
-      console.log(`[CALLBACK] Routing to registration flow`);
-      telegramDebug.log('callback', telegramId, username, `Routing to registration flow: ${data}`);
-      await registrationFlow.handleCallback(ctx, data);
-      return;
-    }
+      // Handle registration flow callbacks
+      if (data?.startsWith('wallet_') || data === 'confirm_generated' || data === 'confirm_imported' || data === 'cancel_registration') {
+        console.log(`[CALLBACK] Routing to registration flow for action: ${data}`);
+        telegramDebug.log('callback', telegramId, username, `Routing to registration flow: ${data}`);
+        await registrationFlow.handleCallback(ctx, data);
+        return;
+      }
 
-    // Handle other callbacks
-    if (data === 'register_start') {
-      console.log(`[CALLBACK] User starting registration`);
-      telegramDebug.log('callback', telegramId, username, 'User starting registration');
-      await this.handleRegister(ctx);
-    } else if (data === 'show_help') {
-      console.log(`[CALLBACK] User requesting help`);
-      telegramDebug.log('callback', telegramId, username, 'User requesting help');
-      await this.handleHelp(ctx);
-    } else if (data === 'show_dashboard') {
-      console.log(`[CALLBACK] User requesting dashboard`);
-      telegramDebug.log('callback', telegramId, username, 'User requesting dashboard');
-      await ctx.reply('📊 Dashboard coming soon!\n\nFor now, use /status to see your portfolio.');
-    } else if (data === 'config') {
-      console.log(`[CALLBACK] User requesting config`);
-      telegramDebug.log('callback', telegramId, username, 'User requesting config');
-      await this.handleConfig(ctx);
-    } else {
-      console.log(`[CALLBACK] Unknown action, ignoring`);
-      telegramDebug.log('callback', telegramId, username, `Unknown callback: ${data}`);
+      // Handle other callbacks
+      if (data === 'register_start') {
+        console.log(`[CALLBACK] User starting registration`);
+        telegramDebug.log('callback', telegramId, username, 'User starting registration');
+        await this.handleRegister(ctx);
+      } else if (data === 'show_help') {
+        console.log(`[CALLBACK] User requesting help`);
+        telegramDebug.log('callback', telegramId, username, 'User requesting help');
+        await this.handleHelp(ctx);
+      } else if (data === 'show_dashboard') {
+        console.log(`[CALLBACK] User requesting dashboard`);
+        telegramDebug.log('callback', telegramId, username, 'User requesting dashboard');
+        await ctx.reply('📊 Dashboard coming soon!\n\nFor now, use /status to see your portfolio.');
+      } else if (data === 'config') {
+        console.log(`[CALLBACK] User requesting config`);
+        telegramDebug.log('callback', telegramId, username, 'User requesting config');
+        await this.handleConfig(ctx);
+      } else {
+        console.log(`[CALLBACK] Unknown action, ignoring`);
+        telegramDebug.log('callback', telegramId, username, `Unknown callback: ${data}`);
+      }
+    } catch (err) {
+      console.error(`❌ [CALLBACK HANDLER ERROR]:`, err);
+      const telegramId = String(ctx.from?.id);
+      const username = ctx.from?.username || 'unknown';
+      telegramDebug.log('callback', telegramId, username, `ERROR: ${err instanceof Error ? err.message : String(err)}`);
+      
+      try {
+        await ctx.answerCbQuery(`Error: ${err instanceof Error ? err.message : 'Something went wrong'}`);
+      } catch (answerErr) {
+        console.error(`Failed to answer callback query with error:`, answerErr);
+      }
     }
   }
 

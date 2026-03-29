@@ -1,0 +1,51 @@
+# .dockerignore
+# Files and directories to exclude from Docker build
+
+# Version control
+.git
+.github
+.gitignore
+
+# Dependencies
+node_modules
+npm-debug.log
+package-lock.json
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+dist
+build
+*.tsbuildinfo
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+README.md
+DEPLOYMENT.md
+DEPLOYMENT_STRUCTURE.md
+
+# Logs
+logs/
+*.log
+
+# Tests
+coverage/
+jest.config.js
+**/*.test.ts
+**/*.spec.ts
+
+# Miscellaneous
+.devcontainer
+.docker
+deployment/docs
+public/

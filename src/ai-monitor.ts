@@ -1,9 +1,12 @@
 // src/ai-monitor.ts
 // AI-powered monitoring and auto-fix agent
+// NOTE: OpenAI functionality disabled by default. Enable with ENABLE_AI_MONITOR=true
 
-import { OpenAI } from 'openai';
 import database from './database';
 import telemetryLogger from './telemetry';
+
+// Feature flag: Enable AI monitoring (disabled by default for cost control)
+const ENABLE_AI_MONITOR = process.env.ENABLE_AI_MONITOR === 'true';
 
 interface MaintenanceIssue {
   severity: 'low' | 'medium' | 'high' | 'critical';
@@ -15,98 +18,35 @@ interface MaintenanceIssue {
 }
 
 class AIMonitor {
-  private client: OpenAI | null = null;
+  private client: null = null;
   private isInitialized = false;
   private inMaintenance = false;
   private maintenanceStartTime = 0;
   private telegramNotifier: any = null;
 
   async initialize(telegramNotifier?: any): Promise<void> {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      telemetryLogger.warn('OpenAI API key not found. AI monitoring disabled.', 'ai-monitor');
+    if (!ENABLE_AI_MONITOR) {
+      telemetryLogger.info('OpenAI API: DISABLED (ENABLE_AI_MONITOR=false in .env)', 'ai-monitor');
+      this.isInitialized = false;
       return;
     }
-
-    try {
-      this.client = new OpenAI({ apiKey });
-      this.isInitialized = true;
-      this.telegramNotifier = telegramNotifier;
-      telemetryLogger.info('AI Monitor initialized', 'ai-monitor');
-    } catch (err) {
-      telemetryLogger.error('Failed to initialize AI Monitor', 'ai-monitor', err);
-    }
+    
+    // OpenAI is disabled by default due to subscription needs
+    telemetryLogger.warn('OpenAI API: DISABLED (awaiting subscription)', 'ai-monitor');
+    this.isInitialized = false;
+    return;
   }
 
   async monitorAndAnalyze(): Promise<void> {
-    if (!this.isInitialized || !this.client) {
-      return;
+    if (!ENABLE_AI_MONITOR) {
+      return; // AI monitoring disabled
     }
-
-    try {
-      const logs = telemetryLogger.getLogsForAnalysis(50);
-      const metrics = telemetryLogger.getRecentMetrics(5);
-      const errorCount = telemetryLogger.getErrorCount();
-      const warningCount = telemetryLogger.getWarningCount();
-
-      if (errorCount === 0 && warningCount === 0) {
-        return;
-      }
-
-      // Send logs to AI for analysis
-      const analysis = await this.analyzeLogsWithAI(logs, metrics, errorCount, warningCount);
-
-      if (analysis && analysis.issue_detected) {
-        await this.handleDetectedIssue(analysis);
-      }
-    } catch (err) {
-      telemetryLogger.error('Error during monitoring', 'ai-monitor', err);
-    }
+    // OpenAI is disabled - AI monitoring not available
+    return;
   }
 
   private async analyzeLogsWithAI(logs: string, metrics: any[], errorCount: number, warningCount: number): Promise<any> {
-    if (!this.client) return null;
-
-    try {
-      const response = await this.client.chat.completions.create({
-        model: 'gpt-4-turbo',
-        messages: [
-          {
-            role: 'user',
-            content: `Analyze these bot logs and metrics for issues. Be concise.
-
-LOGS (last 50 entries):
-${logs}
-
-METRICS:
-- Errors in last 5 min: ${errorCount}
-- Warnings in last 5 min: ${warningCount}
-- Memory info: ${JSON.stringify(metrics[metrics.length - 1]?.memoryUsage || {})}
-
-Respond with JSON:
-{
-  "issue_detected": boolean,
-  "severity": "low|medium|high|critical",
-  "issue_type": "string",
-  "root_cause": "string",
-  "fix": "string",
-  "autoFixable": boolean
-}`,
-          },
-        ],
-      });
-
-      const content = response.choices[0].message?.content;
-      if (content) {
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          return JSON.parse(jsonMatch[0]);
-        }
-      }
-    } catch (err) {
-      telemetryLogger.error('AI analysis failed', 'ai-monitor', err);
-    }
-
+    // OpenAI is disabled - AI analysis not available
     return null;
   }
 
