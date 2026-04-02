@@ -26,6 +26,7 @@ jobs:
           cd ${{ secrets.VPS_APP_PATH }}
           git pull origin main
           npm install
+          npm install # Ensuring consistency with phase 1
           npm run build
           pm2 restart fee-aware-moonshot-bot || pm2 start ecosystem.config.js
           pm2 save
