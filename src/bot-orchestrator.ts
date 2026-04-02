@@ -1,6 +1,3 @@
-// src/bot-orchestrator.ts
-// Main orchestrator for multi-user bot system with AI monitoring
-
 import * as dotenv from 'dotenv';
 dotenv.config();
 
@@ -19,6 +16,8 @@ interface BotState {
   activeUsers: number;
   activeTrades: number;
   uptime: number;
+  lastCycleAt?: string;
+  lastCycleSummary?: string;
 }
 
 class BotOrchestrator {
@@ -33,19 +32,17 @@ class BotOrchestrator {
   private pollInterval: NodeJS.Timeout | null = null;
   private monitorInterval: NodeJS.Timeout | null = null;
   private metricsInterval: NodeJS.Timeout | null = null;
+  private cachedCandidates: Awaited<ReturnType<typeof dexMarketData.getMoonshotCandidates>> = [];
+  private lastCandidateFetchAt = 0;
+  private readonly candidateRefreshMs = parseInt(process.env.CANDIDATE_REFRESH_MS || '15000', 10);
 
   async start(): Promise<void> {
     try {
       telemetryLogger.info('Starting Bot Orchestrator...', 'orchestrator');
-
-      // Initialize all systems
       await this.initializeSystems();
-
-      // Start polling loops
       this.startPollingLoop();
       this.startMonitoringLoop();
       this.startMetricsCollection();
-
       this.state.isRunning = true;
       telemetryLogger.info('Bot Orchestrator started successfully', 'orchestrator');
     } catch (err) {
@@ -56,44 +53,32 @@ class BotOrchestrator {
   }
 
   private async initializeSystems(): Promise<void> {
-    // Initialize API Server
     await apiServer.start();
-    telemetryLogger.info('API Server initialized on port 3000', 'orchestrator');
-
-    // Initialize Telegram Bot
+    telemetryLogger.info('API Server initialized', 'orchestrator');
     const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
     if (telegramToken) {
       await telegramBot.initialize(telegramToken);
       telemetryLogger.info('Telegram Bot initialized', 'orchestrator');
+    } else {
+      telemetryLogger.warn('Telegram token missing, bot notifications disabled', 'orchestrator');
     }
-
-    // AI Monitor disabled - OpenAI subscription pending
-    // await aiMonitor.initialize(telegramBot);
-
     telemetryLogger.info('All systems initialized', 'orchestrator');
   }
 
   private startPollingLoop(): void {
     const pollInterval = parseInt(process.env.POLL_INTERVAL_MS || '5000', 10);
-
     this.pollInterval = setInterval(async () => {
-      if (this.state.inMaintenance) {
-        return;
-      }
-
+      if (this.state.inMaintenance) return;
       try {
         await this.executeTradingCycle();
       } catch (err) {
         telemetryLogger.error('Trading cycle error', 'orchestrator', err);
       }
     }, pollInterval);
-
     telemetryLogger.info(`Trading polling started (${pollInterval}ms)`, 'orchestrator');
   }
 
   private startMonitoringLoop(): void {
-    // Monitor bot health every 30 seconds
-    // NOTE: AI monitoring can be enabled with ENABLE_AI_MONITOR=true
     this.monitorInterval = setInterval(async () => {
       try {
         if (process.env.ENABLE_AI_MONITOR === 'true') {
@@ -106,99 +91,80 @@ class BotOrchestrator {
   }
 
   private startMetricsCollection(): void {
-    // Collect metrics every minute
     this.metricsInterval = setInterval(() => {
       const users = userManager.getAllActiveUsers();
-      const trades = Array.from(users)
-        .reduce((acc, user) => {
-          acc.push(...database.getUserTradingSessions(user.id));
-          return acc;
-        }, [] as any[]);
-
+      const trades = users.flatMap(user => database.getUserTradingSessions(user.id));
       const openTrades = trades.filter(t => t.status === 'open').length;
-
       telemetryLogger.recordMetrics({
         activeUsers: users.length,
         activeTrades: openTrades,
-        totalProfit: trades
-          .filter(t => t.status === 'closed')
-          .reduce((sum, t) => sum + (t.profit || 0), 0),
+        totalProfit: trades.filter(t => t.status === 'closed').reduce((sum, t) => sum + (t.profit || 0), 0),
       });
-
       this.state.activeUsers = users.length;
       this.state.activeTrades = openTrades;
       this.state.uptime = process.uptime();
     }, 60000);
   }
 
+  private async getFreshCandidates() {
+    const now = Date.now();
+    if (this.cachedCandidates.length > 0 && now - this.lastCandidateFetchAt < this.candidateRefreshMs) {
+      return this.cachedCandidates;
+    }
+    this.cachedCandidates = await dexMarketData.getMoonshotCandidates();
+    this.lastCandidateFetchAt = now;
+    return this.cachedCandidates;
+  }
+
   private async executeTradingCycle(): Promise<void> {
     const users = userManager.getAllActiveUsers();
-
+    const candidates = await this.getFreshCandidates();
+    const candidatePrices = new Map<string, number>();
+    candidates.forEach(candidate => candidatePrices.set(candidate.mint, candidate.price));
+    let buySignalsSent = 0;
     for (const user of users) {
       try {
         const config = userManager.getUserConfig(user.id);
-        if (!config || !config.enableLiveTrading) continue;
-
-        // Fetch real moonshot candidates from DEX APIs
-        const moonshotCandidates = await dexMarketData.getMoonshotCandidates();
-
-        if (moonshotCandidates.length === 0) {
-          telemetryLogger.debug('No moonshot candidates found', 'orchestrator');
+        if (!config) continue;
+        await tradingEngine.manageTrades(user.id, candidatePrices);
+        const refreshedOpenTrades = database.getUserTradingSessions(user.id).filter(session => session.status === 'open');
+        if (refreshedOpenTrades.length >= 3) {
+          telemetryLogger.info(`Skipping new entries for ${user.username}, max open trades reached`, 'orchestrator');
           continue;
         }
-
-        // Filter top candidates (confidence > 70)
-        const topCandidates = moonshotCandidates
-          .filter(c => c.confidence > 70)
-          .slice(0, 5);
-
-        // Process each candidate for this user
+        const availableSlots = Math.max(0, 3 - refreshedOpenTrades.length);
+        const blockedMints = new Set(refreshedOpenTrades.map(trade => trade.tokenMint));
+        const topCandidates = candidates.filter(candidate => candidate.confidence >= 70 && !blockedMints.has(candidate.mint)).slice(0, availableSlots);
         for (const candidate of topCandidates) {
-          const signal = await tradingEngine.analyzeMoonshot(candidate.mint);
-          
-          if (signal && signal.type === 'BUY') {
-            // Execute trade if conditions met
-            const success = await tradingEngine.executeBuyTrade(user.id, signal, (config.tradeSize as number) || 1000);
-
-            if (success) {
-              // Notify user
-              const message = `🟢 *BUY SIGNAL*\nToken: ${candidate.name}\nPrice: $${candidate.price.toFixed(8)}\nLiquidity: $${candidate.liquidity.toLocaleString()}\nConfidence: ${candidate.confidence}%`;
-              await telegramBot.sendUserNotification(user.id, message);
-            }
+          const signal = await tradingEngine.analyzeMoonshot(candidate.mint, candidate);
+          if (!signal || signal.type !== 'BUY') continue;
+          const success = await tradingEngine.executeBuyTrade(user.id, signal, (config.tradeSize as number) || 30);
+          if (success) {
+            buySignalsSent += 1;
+            const modeLabel = config.enableLiveTrading ? 'LIVE' : 'PAPER';
+            const message = `${modeLabel} BUY SIGNAL\nToken: ${candidate.name} (${candidate.symbol})\nPrice: ${candidate.price.toFixed(8)}\nLiquidity: ${candidate.liquidity.toLocaleString()}\n24h Volume: ${candidate.volume24h.toLocaleString()}\nConfidence: ${candidate.confidence}%`;
+            await telegramBot.sendUserNotification(user.id, message);
           }
         }
-
-        // Manage existing trades with real market prices
-        const prices = new Map<string, number>();
-        for (const candidate of moonshotCandidates) {
-          prices.set(candidate.mint, candidate.price);
-        }
-        await tradingEngine.manageTrades(user.id, prices);
       } catch (error) {
-        telemetryLogger.error(
-          `Trade cycle error for user ${user.id}: ${error}`,
-          'orchestrator'
-        );
+        telemetryLogger.error(`Trade cycle error for user ${user.id}: ${error}`, 'orchestrator');
       }
     }
+    this.state.lastCycleAt = new Date().toISOString();
+    this.state.lastCycleSummary = `users=${users.length}, candidates=${candidates.length}, buySignals=${buySignalsSent}`;
   }
 
   async shutdown(): Promise<void> {
     try {
       telemetryLogger.info('Shutting down Bot Orchestrator..', 'orchestrator');
-
       this.state.isRunning = false;
-
-      // Stop all intervals
       if (this.pollInterval) clearInterval(this.pollInterval);
       if (this.monitorInterval) clearInterval(this.monitorInterval);
       if (this.metricsInterval) clearInterval(this.metricsInterval);
-
-      // Shutdown systems
       await telegramBot.shutdown();
+      await apiServer.stop();
       telemetryLogger.flushLogs();
       database.close();
-
       telemetryLogger.info('Bot Orchestrator shut down successfully', 'orchestrator');
       process.exit(0);
     } catch (err) {
