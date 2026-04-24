@@ -23,6 +23,32 @@ class MultiUserTelegramBot {
   private userSessions: Map<string, UserSession> = new Map();
   private allUsers: Map<string, string> = new Map(); // telegramId -> userId mapping
 
+  private async verifyTelegramApi(token: string): Promise<void> {
+    const url = `https://api.telegram.org/bot${token}/getMe`;
+    let attempt = 0;
+    // Required for live ops: keep retrying every 10s until Telegram is reachable.
+    // This prevents booting a "running" bot that cannot actually receive updates.
+    while (true) {
+      attempt += 1;
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 7000);
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+        const payload: any = await response.json();
+        if (payload?.ok !== true) {
+          throw new Error(`getMe returned non-ok: ${JSON.stringify(payload)}`);
+        }
+        telemetryLogger.info(`Telegram API connectivity validated (attempt ${attempt})`, 'telegram-multi');
+        return;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        telemetryLogger.error(`Telegram API connectivity failed (attempt ${attempt}): ${msg}. Retrying in 10s.`, 'telegram-multi', err);
+        await new Promise((r) => setTimeout(r, 10_000));
+      }
+    }
+  }
+
   async initialize(token: string): Promise<void> {
     if (!token) {
       telemetryLogger.warn('Telegram bot token not provided', 'telegram-multi');
@@ -89,6 +115,11 @@ class MultiUserTelegramBot {
         console.log(`🚀 [TELEGRAM] Start trading command from @${ctx.from?.username} (${ctx.from?.id})`);
         return this.handleStartTrading.call(this, ctx);
       });
+      this.bot.command('enable_auto', (ctx) => this.handleStartTrading.call(this, ctx));
+      this.bot.command('disable_auto', (ctx) => this.handleStopTrading.call(this, ctx));
+      this.bot.command('balance', (ctx) => this.handleBalance.call(this, ctx));
+      this.bot.command('positions', (ctx) => this.handlePositions.call(this, ctx));
+      this.bot.command('withdraw', (ctx) => this.handleWithdraw.call(this, ctx));
 
       // Handle text messages for registration flow
       this.bot.on('text', (ctx) => {
@@ -109,31 +140,20 @@ class MultiUserTelegramBot {
         telemetryLogger.error('Telegram handler error', 'telegram-multi', err);
       });
 
-      console.log('🚀 [TELEGRAM] Launching bot...');
-      // Launch the bot with timeout to allow localhost/API access
-      let launchSucceeded = false;
-      const launchPromise = this.bot.launch()
-        .then(() => {
-          launchSucceeded = true;
-          console.log('✅ [TELEGRAM] Bot successfully launched and polling!');
-        })
-        .catch(err => {
-          console.error('❌ [TELEGRAM] Failed to launch:', err);
-          telemetryLogger.error(`Telegram bot launch failed: ${err}`, 'telegram-multi', err);
-        });
+      console.log('🚀 [TELEGRAM] Validating Telegram API connectivity...');
+      await this.verifyTelegramApi(token);
 
-      // Don't wait infinitely - resolve after 5 seconds if launch is still pending
-      await Promise.race([
-        launchPromise,
-        new Promise(resolve => {
-          setTimeout(() => {
-            if (!launchSucceeded) {
-              console.log('⏱️ [TELEGRAM] Launch taking longer than expected, continuing anyway...');
-            }
-            resolve(undefined);
-          }, 5000);
-        })
+      console.log('🚀 [TELEGRAM] Launching bot...');
+      const launchPromise = this.bot.launch();
+      const launchState = await Promise.race([
+        launchPromise.then(() => 'launched' as const),
+        new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 12000)),
       ]);
+      if (launchState === 'launched') {
+        console.log('✅ [TELEGRAM] Bot successfully launched and polling!');
+      } else {
+        console.log('⏳ [TELEGRAM] Bot launch still pending after 12s, continuing startup');
+      }
 
       telemetryLogger.info('Multi-user Telegram bot initialized', 'telegram-multi');
 
@@ -146,6 +166,7 @@ class MultiUserTelegramBot {
     } catch (err) {
       console.error('❌ [TELEGRAM INIT ERROR]', err);
       telemetryLogger.error('Failed to initialize Telegram bot', 'telegram-multi', err);
+      throw err;
     }
   }
 
@@ -377,6 +398,64 @@ ${trade.exitPrice ? `Exit: $${trade.exitPrice.toFixed(6)}\nProfit: ${trade.profi
 
     await userManager.updateUserConfig(user.id, { enableLiveTrading: false });
     await ctx.reply('🛑 Live trading DISABLED. Back to paper mode.');
+  }
+
+
+  private async handleBalance(ctx: Context): Promise<void> {
+    const telegramId = String(ctx.from?.id);
+    const user = userManager.getUserByTelegramId(telegramId);
+
+    if (!user) {
+      await ctx.reply('❌ Please register first using /register');
+      return;
+    }
+
+    try {
+      const tradingEngine = require('./trading-engine').default;
+      const balance = await tradingEngine.getWalletBalance(user.id);
+      await ctx.reply(`💰 Wallet Balance: ${balance.toFixed(4)} SOL`);
+    } catch (err) {
+      telemetryLogger.error('Balance command failed', 'telegram-multi', err);
+      await ctx.reply('❌ Failed to fetch balance. Please try again.');
+    }
+  }
+
+  private async handlePositions(ctx: Context): Promise<void> {
+    return this.handleTrades(ctx);
+  }
+
+  private async handleWithdraw(ctx: Context): Promise<void> {
+    const telegramId = String(ctx.from?.id);
+    const user = userManager.getUserByTelegramId(telegramId);
+
+    if (!user) {
+      await ctx.reply('❌ Please register first using /register');
+      return;
+    }
+
+    const text = ('text' in (ctx.message || {}) ? (ctx.message as any).text : '') || '';
+    const parts = text.trim().split(/\s+/);
+    if (parts.length < 3) {
+      await ctx.reply('Usage: /withdraw <destination_wallet> <amount_sol>');
+      return;
+    }
+
+    const destination = parts[1];
+    const amount = Number(parts[2]);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      await ctx.reply('❌ Invalid amount.');
+      return;
+    }
+
+    try {
+      const tradingEngine = require('./trading-engine').default;
+      const sig = await tradingEngine.withdraw(user.id, destination, amount);
+      await ctx.reply(`✅ Withdrawal submitted.
+Tx: ${sig}`);
+    } catch (err) {
+      telemetryLogger.error('Withdraw command failed', 'telegram-multi', err);
+      await ctx.reply(`❌ Withdrawal failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   private async handleHelp(ctx: Context): Promise<void> {

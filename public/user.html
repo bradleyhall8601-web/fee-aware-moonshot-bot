@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <h1>User Dashboard</h1>
+  <button id="refresh">Refresh Status</button>
+  <pre id="out"></pre>
+  <script>
+    async function load(){
+      const status = await fetch('/api/system/status').then(r=>r.json());
+      document.getElementById('out').textContent = JSON.stringify(status, null, 2);
+    }
+    document.getElementById('refresh').onclick = load;
+    load();
+  </script>
+</body>
+</html>

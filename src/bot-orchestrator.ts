@@ -9,6 +9,7 @@ import telegramBot from './telegram-multi';
 import tradingEngine from './trading-engine';
 import apiServer from './api-server';
 import dexMarketData from './dex-market-data';
+import { Connection, PublicKey } from '@solana/web3.js';
 
 interface BotState {
   isRunning: boolean;
@@ -52,7 +53,33 @@ class BotOrchestrator {
     }
   }
 
+  private async validateRpcConnection(): Promise<void> {
+    const rpcEndpoint = process.env.RPC_ENDPOINT || 'https://api.mainnet-beta.solana.com';
+    const connection = new Connection(rpcEndpoint, {
+      commitment: 'confirmed',
+      confirmTransactionInitialTimeout: 60000,
+    });
+    let lastErr: unknown;
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        await connection.getBalance(new PublicKey('11111111111111111111111111111111'));
+        await connection.getLatestBlockhash('confirmed');
+        telemetryLogger.info(`RPC connectivity validated (${rpcEndpoint}) attempt ${attempt}`, 'orchestrator');
+        return;
+      } catch (err) {
+        lastErr = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        telemetryLogger.error(`RPC validation failed (${rpcEndpoint}) attempt ${attempt}/3: ${msg}`, 'orchestrator', err);
+        await new Promise((r) => setTimeout(r, attempt * 1500));
+      }
+    }
+
+    throw new Error(`RPC endpoint unavailable after retries: ${String(lastErr)}`);
+  }
+
   private async initializeSystems(): Promise<void> {
+    await this.validateRpcConnection();
     await apiServer.start();
     telemetryLogger.info('API Server initialized', 'orchestrator');
     const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -66,9 +93,9 @@ class BotOrchestrator {
   }
 
   private startPollingLoop(): void {
-    const pollInterval = parseInt(process.env.POLL_INTERVAL_MS || '5000', 10);
+    const pollInterval = parseInt(process.env.POLL_INTERVAL_MS || '45000', 10);
     this.pollInterval = setInterval(async () => {
-      if (this.state.inMaintenance) return;
+      if (this.state.inMaintenance || process.env.EMERGENCY_STOP === 'true') return;
       try {
         await this.executeTradingCycle();
       } catch (err) {
@@ -121,6 +148,7 @@ class BotOrchestrator {
     const candidates = await this.getFreshCandidates();
     const candidatePrices = new Map<string, number>();
     candidates.forEach(candidate => candidatePrices.set(candidate.mint, candidate.price));
+    tradingEngine.updateMarketSignals(candidates as any);
     let buySignalsSent = 0;
     for (const user of users) {
       try {
@@ -128,13 +156,16 @@ class BotOrchestrator {
         if (!config) continue;
         await tradingEngine.manageTrades(user.id, candidatePrices);
         const refreshedOpenTrades = database.getUserTradingSessions(user.id).filter(session => session.status === 'open');
-        if (refreshedOpenTrades.length >= 3) {
+        const maxOpenTrades = config.maxOpenTrades || 3;
+        if (refreshedOpenTrades.length >= maxOpenTrades) {
           telemetryLogger.info(`Skipping new entries for ${user.username}, max open trades reached`, 'orchestrator');
           continue;
         }
-        const availableSlots = Math.max(0, 3 - refreshedOpenTrades.length);
+        const availableSlots = Math.max(0, maxOpenTrades - refreshedOpenTrades.length);
         const blockedMints = new Set(refreshedOpenTrades.map(trade => trade.tokenMint));
-        const topCandidates = candidates.filter(candidate => candidate.confidence >= 70 && !blockedMints.has(candidate.mint)).slice(0, availableSlots);
+        const topCandidates = candidates
+          .filter(candidate => candidate.confidence >= 70 && !blockedMints.has(candidate.mint))
+          .slice(0, availableSlots);
         for (const candidate of topCandidates) {
           const signal = await tradingEngine.analyzeMoonshot(candidate.mint, candidate);
           if (!signal || signal.type !== 'BUY') continue;

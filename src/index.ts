@@ -7,6 +7,7 @@ dotenv.config();
 import botOrchestrator from "./bot-orchestrator";
 import telemetryLogger from "./telemetry";
 import database from "./database";
+import { configureRuntimeNetwork } from "./runtime-network";
 
 // ── Paper Trading Mode Safety Guard ──────────────────────────────────────────
 // This bot runs in PAPER TRADING mode by default (no real funds at risk).
@@ -61,6 +62,7 @@ async function main(): Promise<void> {
   telemetryLogger.info("🚀 Fee-Aware Moonshot Bot - Multi-User Production System", "main");
   telemetryLogger.info(`Environment: ${process.env.NODE_ENV || 'development'}`, "main");
   telemetryLogger.info(`Live Trading: ${process.env.ENABLE_LIVE_TRADING === 'true' ? '🟢 ENABLED' : '🔴 DISABLED (Paper Mode)'}`, "main");
+  configureRuntimeNetwork();
 
   // Graceful shutdown handler
   const shutdown = async (): Promise<void> => {

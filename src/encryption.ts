@@ -1,99 +1,64 @@
 // src/encryption.ts
-// Encryption service for sensitive data (private keys, API keys)
+// AES-256-GCM encryption service for sensitive data.
 
 import crypto from 'crypto';
 
 class EncryptionService {
-  private encryptionKey: string;
-  private algorithm = 'aes-256-gcm';
+  private readonly algorithm = 'aes-256-gcm';
+  private readonly ivLength = 12;
 
-  constructor() {
-    // Use environment variable or generate from process
-    this.encryptionKey = process.env.ENCRYPTION_KEY || this.generateKey();
-    
-    if (!process.env.ENCRYPTION_KEY) {
-      console.warn('[encryption] Using generated key. Set ENCRYPTION_KEY for production!');
+  private getKey(): Buffer {
+    const key = process.env.MASTER_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY;
+    if (!key) {
+      throw new Error('MASTER_ENCRYPTION_KEY (or ENCRYPTION_KEY for backward compatibility) is required');
     }
-  }
 
-  private generateKey(): string {
-    // Generate a secure key if not provided
-    return crypto.randomBytes(32).toString('hex');
+    const isHex = /^[0-9a-fA-F]+$/.test(key) && key.length === 64;
+    const decoded = isHex ? Buffer.from(key, 'hex') : Buffer.from(key, 'base64');
+
+    if (decoded.length !== 32) {
+      throw new Error('Encryption key must be exactly 32 bytes (64 hex chars or base64-encoded 32 bytes)');
+    }
+
+    return decoded;
   }
 
   encrypt(data: string): string {
-    try {
-      const iv = crypto.randomBytes(16);
-      const cipher = crypto.createCipheriv(
-        this.algorithm,
-        Buffer.from(this.encryptionKey, 'hex'),
-        iv
-      );
+    const iv = crypto.randomBytes(this.ivLength);
+    const cipher = crypto.createCipheriv(this.algorithm, this.getKey(), iv);
+    const encrypted = Buffer.concat([cipher.update(data, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
 
-      let encrypted = cipher.update(data);
-      encrypted = Buffer.concat([encrypted, cipher.final()]);
-
-      const authTag = (cipher as any).getAuthTag();
-
-      // Combine iv + authTag + encrypted
-      const combined = Buffer.concat([iv, authTag, encrypted]);
-      return combined.toString('hex');
-    } catch (err) {
-      throw new Error(`Encryption failed: ${err}`);
-    }
+    return JSON.stringify({
+      v: 1,
+      iv: iv.toString('base64'),
+      tag: tag.toString('base64'),
+      data: encrypted.toString('base64'),
+    });
   }
 
   decrypt(encryptedData: string): string {
-    try {
-      const combined = Buffer.from(encryptedData, 'hex');
+    const parsed = JSON.parse(encryptedData) as { iv: string; tag: string; data: string };
+    const decipher = crypto.createDecipheriv(this.algorithm, this.getKey(), Buffer.from(parsed.iv, 'base64'));
+    decipher.setAuthTag(Buffer.from(parsed.tag, 'base64'));
 
-      // Extract components
-      const iv = combined.slice(0, 16);
-      const authTag = combined.slice(16, 32);
-      const encrypted = combined.slice(32);
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(parsed.data, 'base64')),
+      decipher.final(),
+    ]);
 
-      const decipher = crypto.createDecipheriv(
-        this.algorithm,
-        Buffer.from(this.encryptionKey, 'hex'),
-        iv
-      );
-
-      (decipher as any).setAuthTag(authTag);
-
-      let decrypted = decipher.update(encrypted);
-      decrypted = Buffer.concat([decrypted, decipher.final()]);
-
-      return decrypted.toString('utf-8');
-    } catch (err) {
-      throw new Error(`Decryption failed: ${err}`);
-    }
+    return decrypted.toString('utf-8');
   }
 
   encryptPrivateKey(privateKey: string): string {
-    // Extra validation for private keys
-    if (!privateKey || privateKey.length < 80) {
+    if (!privateKey || privateKey.length < 64) {
       throw new Error('Invalid private key format');
     }
     return this.encrypt(privateKey);
   }
 
   decryptPrivateKey(encryptedKey: string): string {
-    const decrypted = this.decrypt(encryptedKey);
-    if (decrypted.length < 80) {
-      throw new Error('Decryption failed - invalid key');
-    }
-    return decrypted;
-  }
-
-  hashPassword(password: string): string {
-    return crypto
-      .createHash('sha256')
-      .update(password)
-      .digest('hex');
-  }
-
-  verifyPassword(password: string, hash: string): boolean {
-    return this.hashPassword(password) === hash;
+    return this.decrypt(encryptedKey);
   }
 }
 
