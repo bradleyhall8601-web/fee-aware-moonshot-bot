@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <h1>Admin Dashboard</h1>
+  <button id="status">System Status</button>
+  <button id="logs">Recent Logs</button>
+  <pre id="out"></pre>
+  <script>
+    async function getStatus(){
+      const d = await fetch('/api/system/status').then(r=>r.json());
+      document.getElementById('out').textContent = JSON.stringify(d, null, 2);
+    }
+    async function getLogs(){
+      const d = await fetch('/api/system/logs').then(r=>r.json());
+      document.getElementById('out').textContent = d.logs || '';
+    }
+    document.getElementById('status').onclick = getStatus;
+    document.getElementById('logs').onclick = getLogs;
+    getStatus();
+  </script>
+</body>
+</html>

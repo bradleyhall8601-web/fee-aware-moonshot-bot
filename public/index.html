@@ -1,1 +1,19 @@
-<!DOCTYPE html><html><body><h1>Dashboard</h1><pre id='d'></pre><script>async function f(){let s=await fetch('/api/system/status').then(r=>r.json());document.getElementById('d').textContent=JSON.stringify(s,null,2);}f();setInterval(f,3000);</script></body></html>
+<!DOCTYPE html>
+<html>
+<body>
+  <h1>Dashboard</h1>
+  <a href="/user"><button>User Dashboard</button></a>
+  <a href="/admin"><button>Admin Dashboard</button></a>
+  <button id="refresh">Refresh</button>
+  <pre id='d'></pre>
+  <script>
+    async function f(){
+      let s=await fetch('/api/system/status').then(r=>r.json());
+      document.getElementById('d').textContent=JSON.stringify(s,null,2);
+    }
+    document.getElementById('refresh').onclick=f;
+    f();
+    setInterval(f,3000);
+  </script>
+</body>
+</html>

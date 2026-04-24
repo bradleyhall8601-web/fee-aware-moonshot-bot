@@ -2,29 +2,43 @@
 // Multi-user management system
 
 import { v4 as uuidv4 } from 'uuid';
+import { Keypair, PublicKey } from '@solana/web3.js';
 import database, { User, UserConfig } from './database';
 import telemetryLogger from './telemetry';
+import encryption from './encryption';
+
+const bs58 = require('bs58');
 
 class UserManager {
-  private activeUsers: Map<string, any> = new Map();
-
   async registerUser(telegramId: string, username: string, walletAddress: string, privateKey: string): Promise<User> {
     const existingUser = database.getUserByTelegramId(String(telegramId));
     if (existingUser) {
       throw new Error('User already registered');
     }
 
+    const secret = bs58.decode(privateKey.trim());
+    const keypair = Keypair.fromSecretKey(secret);
+    const derivedAddress = keypair.publicKey.toBase58();
+
+    if (walletAddress && walletAddress !== derivedAddress) {
+      throw new Error('Wallet address does not match private key');
+    }
+
+    // Validate address format
+    new PublicKey(derivedAddress);
+
+    const encryptedPrivateKey = encryption.encryptPrivateKey(privateKey.trim());
+
     const userId = uuidv4();
     const user = database.createUser({
       id: userId,
       telegramId: String(telegramId),
       username,
-      walletAddress,
-      privateKey: this.encryptPrivateKey(privateKey),
+      walletAddress: derivedAddress,
+      privateKey: encryptedPrivateKey,
       isActive: true,
     });
 
-    // Create default config for user
     const defaultConfig: UserConfig = {
       userId,
       minLiquidityUsd: 7500,
@@ -34,6 +48,14 @@ class UserManager {
       profitTargetPct: 30,
       trailingStopPct: 15,
       enableLiveTrading: false,
+      tradeSize: 25,
+      maxOpenTrades: 3,
+      dailyLossCapUsd: 100,
+      gasReserveSol: 0.02,
+      maxTradeSizeUsd: 50,
+      emergencyStop: false,
+      userSuspended: false,
+      failureCount: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -42,16 +64,6 @@ class UserManager {
     telemetryLogger.info(`User registered: ${username} (${telegramId})`);
 
     return user;
-  }
-
-  async unregisterUser(userId: string): Promise<void> {
-    const user = database.getUserById(userId);
-    if (!user) {
-      throw new Error('User not found');
-    }
-
-    // TODO: Deactivate user in database (soft delete)
-    telemetryLogger.info(`User deregistered: ${user.username}`);
   }
 
   getUser(userId: string): User | null {
@@ -79,7 +91,7 @@ class UserManager {
     const updated: UserConfig = {
       ...existing,
       ...updates,
-      userId, // Ensure userId stays the same
+      userId,
       updatedAt: Date.now(),
     };
 
@@ -88,23 +100,32 @@ class UserManager {
   }
 
   decryptPrivateKey(encrypted: string): string {
-    // TODO: Implement proper encryption/decryption
-    // For now, return as-is (NEVER do this in production!)
-    return encrypted;
-  }
-
-  private encryptPrivateKey(privateKey: string): string {
-    // TODO: Implement proper encryption
-    // For now, return as-is (NEVER do this in production!)
-    return privateKey;
-  }
-
-  setUserActive(userId: string, active: boolean): void {
-    const user = database.getUserById(userId);
-    if (!user) {
-      throw new Error('User not found');
+    try {
+      return encryption.decryptPrivateKey(encrypted);
+    } catch {
+      // Legacy fallback: if old rows were stored plain base58, accept and migrate on next wallet update.
+      return encrypted;
     }
-    telemetryLogger.info(`User ${active ? 'activated' : 'deactivated'}: ${userId}`);
+  }
+
+  rotateWallet(userId: string, newPrivateKeyBase58: string): string {
+    const user = database.getUserById(userId);
+    if (!user) throw new Error('User not found');
+
+    const keypair = Keypair.fromSecretKey(bs58.decode(newPrivateKeyBase58.trim()));
+    const walletAddress = keypair.publicKey.toBase58();
+    const encrypted = encryption.encryptPrivateKey(newPrivateKeyBase58.trim());
+
+    database.updateUserWallet(userId, walletAddress, encrypted);
+    telemetryLogger.info(`Wallet rotated for user ${userId}`, 'user-manager');
+    return walletAddress;
+  }
+
+  async revokeWallet(userId: string): Promise<void> {
+    const cfg = this.getUserConfig(userId);
+    if (!cfg) throw new Error('User not found');
+    await this.updateUserConfig(userId, { enableLiveTrading: false, emergencyStop: true });
+    telemetryLogger.warn(`Wallet revoked (trading disabled) for user ${userId}`, 'user-manager');
   }
 }
 

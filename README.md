@@ -118,6 +118,16 @@ npm run build
 pm2 start ecosystem.config.js
 ```
 
+### 5.1 Live Readiness + Deployment (recommended)
+
+```bash
+# Verifies Telegram auth, Node/web3 RPC reachability, and startup smoke
+npm run check:live
+
+# Deploy/restart 24/7 process under PM2 after checks pass
+npm run deploy:live
+```
+
 ### 6. Test the Bot
 
 ```bash

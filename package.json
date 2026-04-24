@@ -20,7 +20,10 @@
     "pm2:stop": "pm2 stop fee-aware-moonshot-bot",
     "pm2:restart": "pm2 restart fee-aware-moonshot-bot",
     "pm2:logs": "pm2 logs",
-    "deploy:vps": "git pull origin main && npm install && npm run build && pm2 restart ecosystem.config.js"
+    "deploy:vps": "git pull origin main && npm install && npm run build && pm2 restart ecosystem.config.js",
+    "deploy:live": "bash scripts/deploy-live.sh",
+    "check:live": "bash scripts/live-readiness-check.sh",
+    "deploy:one": "bash ./deploy.sh"
   },
   "keywords": [
     "solana",
@@ -38,6 +41,7 @@
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "express": "^5.2.1",
+    "global-agent": "^3.0.0",
     "helmet": "^8.1.0",
     "nanoid": "^5.1.7",
     "next": "^16.2.1",
@@ -49,6 +53,7 @@
     "react-dom": "^19.2.4",
     "recharts": "^3.8.1",
     "telegraf": "^4.16.3",
+    "undici": "^7.25.0",
     "uuid": "^13.0.0",
     "winston": "^3.19.0"
   },

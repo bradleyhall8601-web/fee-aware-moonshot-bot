@@ -8,9 +8,16 @@ import * as fs from 'fs';
 const DB_DIR = path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DB_DIR, 'bot.db');
 
-// Ensure data directory exists
 if (!fs.existsSync(DB_DIR)) {
   fs.mkdirSync(DB_DIR, { recursive: true });
+}
+
+interface TradeOutcome {
+  mint: string;
+  profitPct: number;
+  durationMs: number;
+  entryConfidence: number;
+  timestamp: number;
 }
 
 interface User {
@@ -18,7 +25,7 @@ interface User {
   telegramId: string;
   username: string;
   walletAddress: string;
-  privateKey: string; // Encrypted in production
+  privateKey: string;
   isActive: boolean;
   createdAt: number;
   updatedAt: number;
@@ -34,6 +41,13 @@ interface UserConfig {
   trailingStopPct: number;
   enableLiveTrading: boolean;
   tradeSize?: number;
+  maxOpenTrades?: number;
+  dailyLossCapUsd?: number;
+  gasReserveSol?: number;
+  maxTradeSizeUsd?: number;
+  emergencyStop?: boolean;
+  userSuspended?: boolean;
+  failureCount?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -44,13 +58,27 @@ interface TradingSession {
   tokenMint: string;
   entryPrice: number;
   entryAmount: number;
+  entryTxSig?: string;
   exitPrice?: number;
   exitAmount?: number;
+  exitTxSig?: string;
   profit?: number;
   profitPct?: number;
   status: 'open' | 'closed' | 'stopped';
   startedAt: number;
   endedAt?: number;
+}
+
+interface ExecutionMetric {
+  id: string;
+  userId: string;
+  tokenMint: string;
+  side: 'BUY' | 'SELL';
+  success: boolean;
+  slippageBps: number;
+  durationMs: number;
+  createdAt: number;
+  reason?: string;
 }
 
 interface MaintenanceLog {
@@ -73,8 +101,14 @@ class DatabaseManager {
     this.initializeSchema();
   }
 
+  private addColumnIfMissing(table: string, column: string, typeDef: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((c) => c.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${typeDef}`);
+    }
+  }
+
   private initializeSchema(): void {
-    // Users table
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
@@ -88,7 +122,6 @@ class DatabaseManager {
       )
     `);
 
-    // User configurations
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS user_configs (
         userId TEXT PRIMARY KEY,
@@ -99,13 +132,20 @@ class DatabaseManager {
         profitTargetPct INTEGER,
         trailingStopPct INTEGER,
         enableLiveTrading INTEGER DEFAULT 0,
+        tradeSize REAL,
+        maxOpenTrades INTEGER DEFAULT 3,
+        dailyLossCapUsd REAL DEFAULT 100,
+        gasReserveSol REAL DEFAULT 0.02,
+        maxTradeSizeUsd REAL DEFAULT 50,
+        emergencyStop INTEGER DEFAULT 0,
+        userSuspended INTEGER DEFAULT 0,
+        failureCount INTEGER DEFAULT 0,
         createdAt INTEGER,
         updatedAt INTEGER,
         FOREIGN KEY(userId) REFERENCES users(id)
       )
     `);
 
-    // Trading sessions
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS trading_sessions (
         id TEXT PRIMARY KEY,
@@ -113,8 +153,10 @@ class DatabaseManager {
         tokenMint TEXT,
         entryPrice REAL,
         entryAmount REAL,
+        entryTxSig TEXT,
         exitPrice REAL,
         exitAmount REAL,
+        exitTxSig TEXT,
         profit REAL,
         profitPct REAL,
         status TEXT,
@@ -124,7 +166,6 @@ class DatabaseManager {
       )
     `);
 
-    // Maintenance logs
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS maintenance_logs (
         id TEXT PRIMARY KEY,
@@ -138,7 +179,6 @@ class DatabaseManager {
       )
     `);
 
-    // Performance metrics
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS performance_metrics (
         id TEXT PRIMARY KEY,
@@ -152,9 +192,59 @@ class DatabaseManager {
         FOREIGN KEY(userId) REFERENCES users(id)
       )
     `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_trade_outcomes (
+        id TEXT PRIMARY KEY,
+        mint TEXT,
+        profitPct REAL,
+        durationMs INTEGER,
+        entryConfidence REAL,
+        timestamp INTEGER
+      )
+    `);
+
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS execution_metrics (
+        id TEXT PRIMARY KEY,
+        userId TEXT,
+        tokenMint TEXT,
+        side TEXT,
+        success INTEGER,
+        slippageBps REAL,
+        durationMs INTEGER,
+        reason TEXT,
+        createdAt INTEGER
+      )
+    `);
+
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS shadow_strategy_metrics (
+        id TEXT PRIMARY KEY,
+        userId TEXT,
+        tokenMint TEXT,
+        primaryScore REAL,
+        shadowScore REAL,
+        wouldTrade INTEGER,
+        timestamp INTEGER
+      )
+    `);
+
+    // Backward-compatible migrations
+    this.addColumnIfMissing('trading_sessions', 'entryTxSig', 'TEXT');
+    this.addColumnIfMissing('trading_sessions', 'exitTxSig', 'TEXT');
+    this.addColumnIfMissing('user_configs', 'tradeSize', 'REAL');
+    this.addColumnIfMissing('user_configs', 'maxOpenTrades', 'INTEGER DEFAULT 3');
+    this.addColumnIfMissing('user_configs', 'dailyLossCapUsd', 'REAL DEFAULT 100');
+    this.addColumnIfMissing('user_configs', 'gasReserveSol', 'REAL DEFAULT 0.02');
+    this.addColumnIfMissing('user_configs', 'maxTradeSizeUsd', 'REAL DEFAULT 50');
+    this.addColumnIfMissing('user_configs', 'emergencyStop', 'INTEGER DEFAULT 0');
+    this.addColumnIfMissing('user_configs', 'userSuspended', 'INTEGER DEFAULT 0');
+    this.addColumnIfMissing('user_configs', 'failureCount', 'INTEGER DEFAULT 0');
   }
 
-  // User operations
   createUser(user: Omit<User, 'createdAt' | 'updatedAt'>): User {
     const now = Date.now();
     const stmt = this.db.prepare(`
@@ -165,111 +255,214 @@ class DatabaseManager {
     return { ...user, createdAt: now, updatedAt: now };
   }
 
+  updateUserWallet(userId: string, walletAddress: string, encryptedPrivateKey: string): void {
+    const stmt = this.db.prepare('UPDATE users SET walletAddress = ?, privateKey = ?, updatedAt = ? WHERE id = ?');
+    stmt.run(walletAddress, encryptedPrivateKey, Date.now(), userId);
+  }
+
   getUserByTelegramId(telegramId: string): User | null {
-    const stmt = this.db.prepare('SELECT * FROM users WHERE telegramId = ?');
-    return stmt.get(telegramId) as User | null;
+    return this.db.prepare('SELECT * FROM users WHERE telegramId = ?').get(telegramId) as User | null;
   }
 
   getUserById(userId: string): User | null {
-    const stmt = this.db.prepare('SELECT * FROM users WHERE id = ?');
-    return stmt.get(userId) as User | null;
+    return this.db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as User | null;
   }
 
   getAllActiveUsers(): User[] {
-    const stmt = this.db.prepare('SELECT * FROM users WHERE isActive = 1');
-    return stmt.all() as User[];
+    return this.db.prepare('SELECT * FROM users WHERE isActive = 1').all() as User[];
   }
 
   updateUserConfig(config: UserConfig): void {
     const now = Date.now();
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO user_configs 
-      (userId, minLiquidityUsd, maxPoolAgeMs, minTxns, maxTxns, profitTargetPct, trailingStopPct, enableLiveTrading, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO user_configs
+      (userId, minLiquidityUsd, maxPoolAgeMs, minTxns, maxTxns, profitTargetPct, trailingStopPct, enableLiveTrading,
+      tradeSize, maxOpenTrades, dailyLossCapUsd, gasReserveSol, maxTradeSizeUsd, emergencyStop, userSuspended, failureCount,
+      createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(config.userId, config.minLiquidityUsd, config.maxPoolAgeMs, config.minTxns, config.maxTxns, 
-             config.profitTargetPct, config.trailingStopPct, config.enableLiveTrading ? 1 : 0,
-             config.createdAt || now, now);
+
+    stmt.run(
+      config.userId,
+      config.minLiquidityUsd,
+      config.maxPoolAgeMs,
+      config.minTxns,
+      config.maxTxns,
+      config.profitTargetPct,
+      config.trailingStopPct,
+      config.enableLiveTrading ? 1 : 0,
+      config.tradeSize || 25,
+      config.maxOpenTrades || 3,
+      config.dailyLossCapUsd || 100,
+      config.gasReserveSol || 0.02,
+      config.maxTradeSizeUsd || 50,
+      config.emergencyStop ? 1 : 0,
+      config.userSuspended ? 1 : 0,
+      config.failureCount || 0,
+      config.createdAt || now,
+      now
+    );
   }
 
   getUserConfig(userId: string): UserConfig | null {
-    const stmt = this.db.prepare('SELECT * FROM user_configs WHERE userId = ?');
-    return stmt.get(userId) as UserConfig | null;
+    const cfg = this.db.prepare('SELECT * FROM user_configs WHERE userId = ?').get(userId) as UserConfig | null;
+    if (!cfg) return null;
+    cfg.enableLiveTrading = Boolean((cfg as any).enableLiveTrading);
+    cfg.emergencyStop = Boolean((cfg as any).emergencyStop);
+    cfg.userSuspended = Boolean((cfg as any).userSuspended);
+    return cfg;
   }
 
-  // Trading session operations
+  incrementUserFailure(userId: string): number {
+    const cfg = this.getUserConfig(userId);
+    if (!cfg) return 0;
+    const next = (cfg.failureCount || 0) + 1;
+    this.updateUserConfig({ ...cfg, failureCount: next, userSuspended: next >= 5 });
+    return next;
+  }
+
+  clearUserFailures(userId: string): void {
+    const cfg = this.getUserConfig(userId);
+    if (!cfg) return;
+    this.updateUserConfig({ ...cfg, failureCount: 0, userSuspended: false });
+  }
+
   createTradingSession(session: Omit<TradingSession, 'id'>): TradingSession {
-    const id = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const id = `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const stmt = this.db.prepare(`
-      INSERT INTO trading_sessions 
-      (id, userId, tokenMint, entryPrice, entryAmount, status, startedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO trading_sessions
+      (id, userId, tokenMint, entryPrice, entryAmount, entryTxSig, status, startedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(id, session.userId, session.tokenMint, session.entryPrice, session.entryAmount, 'open', session.startedAt);
-    return { id, ...session };
+    stmt.run(id, session.userId, session.tokenMint, session.entryPrice, session.entryAmount, session.entryTxSig || null, session.status, session.startedAt);
+    return { ...session, id };
   }
 
-  closeTradingSession(id: string, exitPrice: number, exitAmount: number, profit: number, profitPct: number): void {
-    const stmt = this.db.prepare(`
-      UPDATE trading_sessions 
-      SET exitPrice = ?, exitAmount = ?, profit = ?, profitPct = ?, status = ?, endedAt = ?
+
+  updateTradingSessionEntryAmount(id: string, newEntryAmount: number): void {
+    this.db.prepare('UPDATE trading_sessions SET entryAmount = ? WHERE id = ? AND status = ?').run(newEntryAmount, id, 'open');
+  }
+
+  closeTradingSession(id: string, exitPrice: number, exitAmount: number, profit: number, profitPct: number, exitTxSig?: string): void {
+    this.db.prepare(`
+      UPDATE trading_sessions
+      SET exitPrice = ?, exitAmount = ?, profit = ?, profitPct = ?, status = ?, endedAt = ?, exitTxSig = ?
       WHERE id = ?
-    `);
-    stmt.run(exitPrice, exitAmount, profit, profitPct, 'closed', Date.now(), id);
+    `).run(exitPrice, exitAmount, profit, profitPct, 'closed', Date.now(), exitTxSig || null, id);
   }
 
   getUserTradingSessions(userId: string): TradingSession[] {
-    const stmt = this.db.prepare('SELECT * FROM trading_sessions WHERE userId = ? ORDER BY startedAt DESC');
-    return stmt.all(userId) as TradingSession[];
+    return this.db.prepare('SELECT * FROM trading_sessions WHERE userId = ? ORDER BY startedAt DESC').all(userId) as TradingSession[];
   }
 
-  // Maintenance logs
+  getOpenTradingSessionForToken(userId: string, tokenMint: string): TradingSession | null {
+    return this.db.prepare('SELECT * FROM trading_sessions WHERE userId = ? AND tokenMint = ? AND status = ? LIMIT 1').get(userId, tokenMint, 'open') as TradingSession | null;
+  }
+
   createMaintenanceLog(log: Omit<MaintenanceLog, 'id' | 'createdAt'>): MaintenanceLog {
     const id = `maint_${Date.now()}`;
     const now = Date.now();
-    const stmt = this.db.prepare(`
+    this.db.prepare(`
       INSERT INTO maintenance_logs (id, issue, status, startTime, estimatedMinutes, message, createdAt)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(id, log.issue, log.status, log.startTime, log.estimatedMinutes, log.message, now);
+    `).run(id, log.issue, log.status, log.startTime, log.estimatedMinutes, log.message, now);
     return { id, ...log, createdAt: now };
   }
 
   updateMaintenanceStatus(id: string, status: string, message?: string): void {
-    const stmt = this.db.prepare('UPDATE maintenance_logs SET status = ?, message = ? WHERE id = ?');
-    stmt.run(status, message || '', id);
+    this.db.prepare('UPDATE maintenance_logs SET status = ?, message = ? WHERE id = ?').run(status, message || '', id);
   }
 
   completeMaintenanceLog(id: string): void {
-    const stmt = this.db.prepare('UPDATE maintenance_logs SET status = ?, endTime = ? WHERE id = ?');
-    stmt.run('completed', Date.now(), id);
+    this.db.prepare('UPDATE maintenance_logs SET status = ?, endTime = ? WHERE id = ?').run('completed', Date.now(), id);
   }
 
   getLatestMaintenanceLog(): MaintenanceLog | null {
-    const stmt = this.db.prepare('SELECT * FROM maintenance_logs ORDER BY createdAt DESC LIMIT 1');
-    return stmt.get() as MaintenanceLog | null;
+    return this.db.prepare('SELECT * FROM maintenance_logs ORDER BY createdAt DESC LIMIT 1').get() as MaintenanceLog | null;
   }
 
-  // Performance metrics
   updatePerformanceMetrics(userId: string, trades: TradingSession[]): void {
     const totalTrades = trades.length;
-    const winningTrades = trades.filter(t => t.profit && t.profit > 0).length;
-    const losingTrades = trades.filter(t => t.profit && t.profit < 0).length;
+    const winningTrades = trades.filter((t) => t.profit && t.profit > 0).length;
+    const losingTrades = trades.filter((t) => t.profit && t.profit < 0).length;
     const totalProfit = trades.reduce((sum, t) => sum + (t.profit || 0), 0);
     const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
 
     const id = `perf_${userId}`;
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO performance_metrics 
+    this.db.prepare(`
+      INSERT OR REPLACE INTO performance_metrics
       (id, userId, totalTrades, winningTrades, losingTrades, totalProfit, winRate, updatedAt)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(id, userId, totalTrades, winningTrades, losingTrades, totalProfit, winRate, Date.now());
+    `).run(id, userId, totalTrades, winningTrades, losingTrades, totalProfit, winRate, Date.now());
   }
 
   getPerformanceMetrics(userId: string) {
-    const stmt = this.db.prepare('SELECT * FROM performance_metrics WHERE userId = ?');
-    return stmt.get(userId);
+    return this.db.prepare('SELECT * FROM performance_metrics WHERE userId = ?').get(userId);
+  }
+
+  saveAiTradeOutcome(outcome: TradeOutcome): void {
+    const id = `ai_${outcome.timestamp}_${Math.random().toString(36).slice(2, 7)}`;
+    this.db.prepare(`
+      INSERT INTO ai_trade_outcomes (id, mint, profitPct, durationMs, entryConfidence, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, outcome.mint, outcome.profitPct, outcome.durationMs, outcome.entryConfidence, outcome.timestamp);
+  }
+
+  getRecentAiTradeOutcomes(limit: number): TradeOutcome[] {
+    return this.db.prepare(`
+      SELECT mint, profitPct, durationMs, entryConfidence, timestamp
+      FROM ai_trade_outcomes
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `).all(limit) as TradeOutcome[];
+  }
+
+
+  recordExecutionMetric(metric: Omit<ExecutionMetric, 'id' | 'createdAt'>): void {
+    const id = `exec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    this.db.prepare(`
+      INSERT INTO execution_metrics
+      (id, userId, tokenMint, side, success, slippageBps, durationMs, reason, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      metric.userId,
+      metric.tokenMint,
+      metric.side,
+      metric.success ? 1 : 0,
+      metric.slippageBps,
+      metric.durationMs,
+      metric.reason || '',
+      Date.now()
+    );
+  }
+
+  getExecutionMetricsSummary(userId: string): { successRate: number; failedSwaps: number; averageSlippageBps: number; averageTimeInTradeMs: number } {
+    const rows = this.db.prepare('SELECT * FROM execution_metrics WHERE userId = ? ORDER BY createdAt DESC LIMIT 1000').all(userId) as any[];
+    if (rows.length === 0) {
+      return { successRate: 0, failedSwaps: 0, averageSlippageBps: 0, averageTimeInTradeMs: 0 };
+    }
+
+    const success = rows.filter(r => r.success === 1).length;
+    const failed = rows.length - success;
+    const avgSlip = rows.reduce((a, r) => a + (r.slippageBps || 0), 0) / rows.length;
+    const avgDur = rows.reduce((a, r) => a + (r.durationMs || 0), 0) / rows.length;
+
+    return {
+      successRate: (success / rows.length) * 100,
+      failedSwaps: failed,
+      averageSlippageBps: avgSlip,
+      averageTimeInTradeMs: avgDur,
+    };
+  }
+
+
+  recordShadowStrategyMetric(userId: string, tokenMint: string, primaryScore: number, shadowScore: number, wouldTrade: boolean): void {
+    const id = `shadow_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    this.db.prepare(`
+      INSERT INTO shadow_strategy_metrics (id, userId, tokenMint, primaryScore, shadowScore, wouldTrade, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, userId, tokenMint, primaryScore, shadowScore, wouldTrade ? 1 : 0, Date.now());
   }
 
   close(): void {
@@ -277,7 +470,6 @@ class DatabaseManager {
   }
 }
 
-// Singleton instance
 const database = new DatabaseManager();
 
 export default database;

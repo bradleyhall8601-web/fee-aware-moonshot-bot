@@ -50,6 +50,7 @@ class ApiServer {
 
     this.app.get('/api/trades/:userId', this.getUserTrades.bind(this));
     this.app.get('/api/performance/:userId', this.getPerformance.bind(this));
+    this.app.get('/api/execution/:userId', this.getExecutionMetrics.bind(this));
 
     this.app.get('/api/market/moonshots', this.getMoonshots.bind(this));
     this.app.get('/api/market/price/:mint', this.getTokenPrice.bind(this));
@@ -64,11 +65,17 @@ class ApiServer {
     this.app.get('/', (req: Request, res: Response) => {
       res.sendFile(process.cwd() + '/public/index.html');
     });
+    this.app.get('/user', (req: Request, res: Response) => {
+      res.sendFile(process.cwd() + '/public/user.html');
+    });
+    this.app.get('/admin', (req: Request, res: Response) => {
+      res.sendFile(process.cwd() + '/public/admin.html');
+    });
   }
 
   private async getUsers(req: Request, res: Response): Promise<void> {
     try {
-      const users = userManager.getAllActiveUsers();
+      const users = userManager.getAllActiveUsers().map(u => ({ ...u, privateKey: undefined }));
       res.json(users);
     } catch (err) {
       res.status(500).json({ error: String(err) });
@@ -87,7 +94,7 @@ class ApiServer {
         return;
       }
 
-      res.json({ user, config, metrics });
+      res.json({ user: { ...user, privateKey: undefined }, config, metrics });
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }
@@ -119,7 +126,18 @@ class ApiServer {
     try {
       const userId = String(req.params.userId);
       const metrics = database.getPerformanceMetrics(userId);
-      res.json(metrics);
+      res.json(metrics || {});
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  }
+
+
+  private async getExecutionMetrics(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = String(req.params.userId);
+      const metrics = tradingEngine.getExecutionMetrics(userId);
+      res.json(metrics || {});
     } catch (err) {
       res.status(500).json({ error: String(err) });
     }
