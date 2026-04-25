@@ -7,7 +7,7 @@ import telemetryLogger from './telemetry';
 import { Keypair } from '@solana/web3.js';
 
 // bs58 is available from @solana/web3.js
-const bs58 = require('bs58');
+import bs58 from 'bs58';
 
 interface RegistrationState {
   stage:
