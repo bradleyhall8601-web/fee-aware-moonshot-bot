@@ -4,11 +4,21 @@
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import database from './database';
 import userManager from './user-manager';
 import telemetryLogger from './telemetry';
 import tradingEngine from './trading-engine';
 import dexMarketData from './dex-market-data';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+
+// Resolve the frontend dist directory relative to the compiled output location.
+// In production: dist/api-server.js → ../../frontend/dist
+// In dev (tsx):  src/api-server.ts  → ../frontend/dist
+const FRONTEND_DIST = path.resolve(__dirname, '..', 'frontend', 'dist');
 
 class ApiServer {
   private app: Express;
@@ -22,7 +32,21 @@ class ApiServer {
   }
 
   private setupMiddleware(): void {
-    this.app.use(helmet());
+    // Relax CSP so the React SPA (with Vite-bundled assets) loads correctly.
+    this.app.use(
+      helmet({
+        contentSecurityPolicy: {
+          directives: {
+            defaultSrc:  ["'self'"],
+            scriptSrc:   ["'self'", "'unsafe-inline'"],
+            styleSrc:    ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+            fontSrc:     ["'self'", 'https://fonts.gstatic.com'],
+            imgSrc:      ["'self'", 'data:', 'https:'],
+            connectSrc:  ["'self'"],
+          },
+        },
+      })
+    );
     this.app.use(cors());
     this.app.use(express.json());
 
@@ -59,10 +83,37 @@ class ApiServer {
     this.app.get('/debug/telegram', this.getTelegramDebugInfo.bind(this));
     this.app.get('/debug/status', this.getDebugStatus.bind(this));
 
-    // Serve static dashboard
-    this.app.use(express.static(process.cwd() + '/public'));
-    this.app.get('/', (req: Request, res: Response) => {
-      res.sendFile(process.cwd() + '/public/index.html');
+    // ── Serve React frontend ──────────────────────────────────────────────────
+    // Helmet's default CSP blocks inline scripts; relax it for the SPA.
+    this.app.use(
+      express.static(FRONTEND_DIST, { maxAge: '1d', index: false })
+    );
+
+    // SPA catch-all: any non-API, non-asset request returns index.html so that
+    // React Router can handle client-side navigation.
+    this.app.get('*', async (req: Request, res: Response) => {
+      const indexPath = path.join(FRONTEND_DIST, 'index.html');
+      try {
+        await res.sendFile(indexPath);
+      } catch {
+        // Frontend not built yet — fall back to a minimal status page
+        res.status(200).send(`<!DOCTYPE html>
+<html>
+<head><title>Moonshot Bot</title>
+<style>body{font-family:monospace;background:#0f1117;color:#22c55e;padding:2rem}</style>
+</head>
+<body>
+<h1>🚀 Moonshot Bot</h1>
+<p>API is running. Frontend not built yet.</p>
+<p>Run <code>npm run build:frontend</code> to build the dashboard.</p>
+<ul>
+  <li><a href="/health" style="color:#22c55e">/health</a></li>
+  <li><a href="/api/system/status" style="color:#22c55e">/api/system/status</a></li>
+  <li><a href="/debug/status" style="color:#22c55e">/debug/status</a></li>
+</ul>
+</body>
+</html>`);
+      }
     });
   }
 

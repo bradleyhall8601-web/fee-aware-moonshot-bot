@@ -1,12 +1,14 @@
 {
   "name": "fee-aware-moonshot-bot",
   "version": "2.0.0",
-  "description": "Production-ready multi-user Solana trading bot with AI monitoring and Telegram integration",
+  "description": "Production-ready multi-user Solana trading bot with AI monitoring, Telegram integration, and React dashboard",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "build:frontend": "cd frontend && npm install && npm run build",
+    "build:backend": "rm -rf dist && tsc -p tsconfig.json",
+    "build": "npm run build:frontend && npm run build:backend",
     "start": "node dist/index.js",
     "health": "tsx src/index.ts health",
     "test": "jest --detectOpenHandles --forceExit",
@@ -23,12 +25,7 @@
     "pm2:logs": "pm2 logs",
     "deploy:vps": "git pull origin main && npm install && npm run build && pm2 restart ecosystem.config.js"
   },
-  "keywords": [
-    "solana",
-    "trading",
-    "meme",
-    "bot"
-  ],
+  "keywords": ["solana", "trading", "meme", "bot"],
   "author": "",
   "license": "MIT",
   "dependencies": {
@@ -41,14 +38,10 @@
     "express": "^5.2.1",
     "helmet": "^8.1.0",
     "nanoid": "^5.1.7",
-    "next": "^16.2.1",
     "openai": "^6.33.0",
     "pino": "^8.21.0",
     "pino-pretty": "^10.3.1",
     "pm2": "^6.0.14",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "recharts": "^3.8.1",
     "telegraf": "^4.16.3",
     "uuid": "^13.0.0",
     "winston": "^3.19.0"

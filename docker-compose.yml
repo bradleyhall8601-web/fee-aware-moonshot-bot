@@ -10,6 +10,7 @@ services:
       ENABLE_LIVE_TRADING: "false"
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      API_PORT: "3000"
       LOG_LEVEL: info
       POLL_INTERVAL_MS: 5000
     volumes:
@@ -21,7 +22,7 @@ services:
     networks:
       - bot-network
     healthcheck:
-      test: ["CMD", "npm", "run", "health"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
