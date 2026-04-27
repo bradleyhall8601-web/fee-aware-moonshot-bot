@@ -24,10 +24,8 @@ COPY src ./src
 RUN npm run build:backend
 
 # ── Stage 3: Production image ─────────────────────────────────────────────────
-FROM node:18-alpine AS production
+FROM base AS production
 WORKDIR /app
-
-RUN apk add --no-cache dumb-init
 
 # Copy backend production deps
 COPY package*.json ./
