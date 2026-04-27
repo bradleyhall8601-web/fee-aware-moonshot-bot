@@ -1,7 +1,7 @@
 // src/api-server.ts
-// REST API and web dashboard server
+// MoonShotForge REST API and web dashboard server
 
-import express, { Express, Request, Response } from 'express';
+import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
@@ -11,6 +11,16 @@ import userManager from './user-manager';
 import telemetryLogger from './telemetry';
 import tradingEngine from './trading-engine';
 import dexMarketData from './dex-market-data';
+import paperTrading from './paper-trading';
+import signalAggregator from './signal-aggregator';
+import confidenceScorer from './confidence-scorer';
+import adminAuth from './admin-auth';
+import accessManager from './access/access-manager';
+import systemHealth from './system-health';
+import stabilityMonitor from './stability-monitor';
+import aiSelfImprove from './ai-self-improve';
+import winStreakLearner from './win-streak-learner';
+import cascadeState from './cascade-state';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -22,7 +32,7 @@ const FRONTEND_DIST = path.resolve(__dirname, '..', 'frontend', 'dist');
 
 class ApiServer {
   private app: Express;
-  private port = parseInt(process.env.API_PORT || '3000', 10);
+  private port = parseInt(process.env.PORT || process.env.API_PORT || '5000', 10);
   private server: any = null;
 
   constructor() {
@@ -59,60 +69,206 @@ class ApiServer {
 
   private setupRoutes(): void {
     // Health check
-    this.app.get('/health', (req: Request, res: Response) => {
-      res.json({
-        ok: true,
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-      });
+    this.app.get('/health', async (req: Request, res: Response) => {
+      const health = await systemHealth.getHealth();
+      res.json(health);
+    });
+
+    this.app.get('/api/health', async (req: Request, res: Response) => {
+      const health = await systemHealth.getHealth();
+      res.json(health);
+    });
+
+    // Admin auth
+    this.app.post('/api/admin/login', (req: Request, res: Response) => {
+      const { password } = req.body;
+      const ip = req.ip;
+      const result = adminAuth.login(password, ip);
+      if (result.success) {
+        res.json({ success: true, token: result.token });
+      } else {
+        res.status(401).json({ success: false, error: result.error });
+      }
+    });
+
+    this.app.post('/api/admin/logout', (req: Request, res: Response) => {
+      const token = req.headers.authorization?.replace('Bearer ', '');
+      if (token) adminAuth.logout(token);
+      res.json({ success: true });
+    });
+
+    // Admin middleware
+    const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
+      const token = req.headers.authorization?.replace('Bearer ', '') || req.query.token as string;
+      if (!token || !adminAuth.validateToken(token)) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      next();
+    };
+
+    // Admin endpoints
+    this.app.post('/api/admin/grant', requireAdmin, async (req: Request, res: Response) => {
+      const { userId, days } = req.body;
+      accessManager.grantAccess(userId, 'admin', days || 30);
+      res.json({ success: true });
+    });
+
+    this.app.post('/api/admin/revoke', requireAdmin, async (req: Request, res: Response) => {
+      const { userId } = req.body;
+      accessManager.revokeAccess(userId, 'admin');
+      res.json({ success: true });
+    });
+
+    this.app.post('/api/admin/kill', requireAdmin, (req: Request, res: Response) => {
+      process.env.ENABLE_LIVE_TRADING = 'false';
+      telemetryLogger.warn('Emergency kill via API', 'api-server');
+      res.json({ success: true, message: 'Live trading disabled' });
+    });
+
+    this.app.post('/api/admin/resume', requireAdmin, (req: Request, res: Response) => {
+      res.json({ success: true, message: 'Bot resumed' });
+    });
+
+    this.app.post('/api/admin/broadcast', requireAdmin, async (req: Request, res: Response) => {
+      const { message } = req.body;
+      res.json({ success: true, message: 'Broadcast queued' });
     });
 
     // API Routes
-    this.app.get('/api/users', this.getUsers.bind(this));
-    this.app.get('/api/users/:userId', this.getUser.bind(this));
-    this.app.post('/api/users/:userId/config', this.updateUserConfig.bind(this));
+    this.app.get('/api/users', requireAdmin, this.getUsers.bind(this));
+    this.app.get('/api/users/:userId', requireAdmin, this.getUser.bind(this));
+    this.app.post('/api/users/:userId/config', requireAdmin, this.updateUserConfig.bind(this));
 
-    this.app.get('/api/trades/:userId', this.getUserTrades.bind(this));
+    this.app.get('/api/trades/:userId', requireAdmin, this.getUserTrades.bind(this));
     this.app.get('/api/performance/:userId', this.getPerformance.bind(this));
+
+    this.app.get('/api/signals', async (req: Request, res: Response) => {
+      try {
+        const signals = database.getRecentSignals(50);
+        res.json(signals);
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    this.app.get('/api/positions', async (req: Request, res: Response) => {
+      try {
+        const positions = paperTrading.getOpenPositions();
+        res.json(positions);
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    this.app.get('/api/paper', async (req: Request, res: Response) => {
+      try {
+        const stats = paperTrading.getStats();
+        const simulations = paperTrading.getWalletSimulations();
+        const closed = paperTrading.getClosedPositions(undefined, 20);
+        res.json({ stats, simulations, recentTrades: closed });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    this.app.get('/api/wallets', requireAdmin, async (req: Request, res: Response) => {
+      try {
+        const users = userManager.getAllActiveUsers();
+        const wallets = users.map(u => ({
+          userId: u.id,
+          username: u.username,
+          address: u.walletAddress ? u.walletAddress.slice(0, 8) + '...' : 'Not set',
+        }));
+        res.json(wallets);
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    this.app.get('/api/logs', requireAdmin, this.getSystemLogs.bind(this));
 
     this.app.get('/api/market/moonshots', this.getMoonshots.bind(this));
     this.app.get('/api/market/price/:mint', this.getTokenPrice.bind(this));
 
+    this.app.get('/api/status', this.getSystemStatus.bind(this));
     this.app.get('/api/system/status', this.getSystemStatus.bind(this));
-    this.app.get('/api/system/logs', this.getSystemLogs.bind(this));
+    this.app.get('/api/system/logs', requireAdmin, this.getSystemLogs.bind(this));
     this.app.get('/debug/telegram', this.getTelegramDebugInfo.bind(this));
     this.app.get('/debug/status', this.getDebugStatus.bind(this));
 
-    // ── Serve React frontend ──────────────────────────────────────────────────
-    // Helmet's default CSP blocks inline scripts; relax it for the SPA.
-    this.app.use(
-      express.static(FRONTEND_DIST, { maxAge: '1d', index: false })
-    );
-
-    // SPA catch-all: any non-API, non-asset request returns index.html so that
-    // React Router can handle client-side navigation.
-    this.app.get('*', async (req: Request, res: Response) => {
-      const indexPath = path.join(FRONTEND_DIST, 'index.html');
+    // Support
+    this.app.post('/api/support', async (req: Request, res: Response) => {
       try {
-        await res.sendFile(indexPath);
+        const { question, userId, telegramId } = req.body;
+        res.json({ message: 'Support ticket created. Use /support in Telegram for faster response.' });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // ── Serve public static pages ─────────────────────────────────────────────
+    const PUBLIC_DIR = path.resolve(process.cwd(), 'public');
+    this.app.use(express.static(PUBLIC_DIR, { index: false }));
+
+    // Try React frontend dist if available
+    this.app.use(express.static(FRONTEND_DIST, { maxAge: '1d', index: false }));
+
+    // Named page routes
+    this.app.get('/', (req: Request, res: Response) => {
+      const indexPath = path.join(PUBLIC_DIR, 'index.html');
+      res.sendFile(indexPath, (err) => {
+        if (err) res.redirect('/landing.html');
+      });
+    });
+
+    this.app.get('/admin/login', (req: Request, res: Response) => {
+      res.sendFile(path.join(PUBLIC_DIR, 'admin-login.html'), (err) => {
+        if (err) res.status(404).send('Admin login page not found');
+      });
+    });
+
+    this.app.get('/admin', (req: Request, res: Response) => {
+      res.sendFile(path.join(PUBLIC_DIR, 'admin-login.html'), (err) => {
+        if (err) res.status(404).send('Admin page not found');
+      });
+    });
+
+    // SPA catch-all
+    this.app.get('*', async (req: Request, res: Response) => {
+      // Try public dir first
+      const publicIndex = path.join(PUBLIC_DIR, 'index.html');
+      const frontendIndex = path.join(FRONTEND_DIST, 'index.html');
+      try {
+        await res.sendFile(frontendIndex);
       } catch {
-        // Frontend not built yet — fall back to a minimal status page
-        res.status(200).send(`<!DOCTYPE html>
+        try {
+          await res.sendFile(publicIndex);
+        } catch {
+          res.status(200).send(`<!DOCTYPE html>
 <html>
-<head><title>Moonshot Bot</title>
-<style>body{font-family:monospace;background:#0f1117;color:#22c55e;padding:2rem}</style>
+<head><title>MoonShotForge</title>
+<style>body{font-family:monospace;background:#0a0a0f;color:#22c55e;padding:2rem;margin:0}
+h1{font-size:2rem;margin-bottom:1rem}a{color:#22c55e}
+.badge{background:#1a1a2e;padding:0.5rem 1rem;border-radius:4px;display:inline-block;margin:0.25rem}
+</style>
 </head>
 <body>
-<h1>🚀 Moonshot Bot</h1>
-<p>API is running. Frontend not built yet.</p>
-<p>Run <code>npm run build:frontend</code> to build the dashboard.</p>
-<ul>
-  <li><a href="/health" style="color:#22c55e">/health</a></li>
-  <li><a href="/api/system/status" style="color:#22c55e">/api/system/status</a></li>
-  <li><a href="/debug/status" style="color:#22c55e">/debug/status</a></li>
-</ul>
+<h1>🚀 MoonShotForge</h1>
+<p>Production-ready Solana meme-coin signal & trading bot</p>
+<p>API is running on port ${this.port}</p>
+<div>
+  <span class="badge">📡 <a href="/health">/health</a></span>
+  <span class="badge">📊 <a href="/api/status">/api/status</a></span>
+  <span class="badge">🎯 <a href="/api/signals">/api/signals</a></span>
+  <span class="badge">📄 <a href="/api/paper">/api/paper</a></span>
+  <span class="badge">🔧 <a href="/admin/login">/admin/login</a></span>
+  <span class="badge">🐛 <a href="/debug/status">/debug/status</a></span>
+</div>
+<p style="margin-top:2rem;color:#666">Mode: ${process.env.ENABLE_LIVE_TRADING === 'true' ? '🟢 LIVE' : '📄 PAPER'}</p>
 </body>
 </html>`);
+        }
       }
     });
   }
@@ -198,17 +354,21 @@ class ApiServer {
   private async getSystemStatus(req: Request, res: Response): Promise<void> {
     try {
       const users = userManager.getAllActiveUsers();
-      const trades = users.flatMap(u => database.getUserTradingSessions(u.id));
+      const paperStats = paperTrading.getStats();
+      const stability = stabilityMonitor.getStatus();
 
       res.json({
         uptime: process.uptime(),
         memory: process.memoryUsage(),
         activeUsers: users.length,
-        activeTrades: trades.filter(t => t.status === 'open').length,
-        totalTrades: trades.length,
-        totalProfit: trades
-          .filter(t => t.status === 'closed')
-          .reduce((sum, t) => sum + (t.profit || 0), 0),
+        activeTrades: paperStats.openPositions,
+        totalTrades: paperStats.totalTrades,
+        winRate: paperStats.winRate,
+        totalProfit: paperStats.totalProfit,
+        mode: process.env.ENABLE_LIVE_TRADING === 'true' ? 'LIVE' : 'PAPER',
+        stability: stability.healthy,
+        threshold: confidenceScorer.getThreshold(),
+        timestamp: new Date().toISOString(),
       });
     } catch (err) {
       res.status(500).json({ error: String(err) });
@@ -257,7 +417,8 @@ class ApiServer {
   private async getDebugStatus(req: Request, res: Response): Promise<void> {
     try {
       const users = userManager.getAllActiveUsers();
-      const trades = users.flatMap(u => database.getUserTradingSessions(u.id));
+      const paperStats = paperTrading.getStats();
+      const port = this.port;
 
       res.json({
         timestamp: new Date().toISOString(),
@@ -272,14 +433,20 @@ class ApiServer {
         bot: {
           isRunning: true,
           telegramToken: process.env.TELEGRAM_BOT_TOKEN ? '✓ Set' : '✗ Missing',
+          openaiKey: process.env.OPENAI_API_KEY ? '✓ Set' : '✗ Missing',
           totalUsers: users.length,
-          activeTrades: trades.filter(t => t.status === 'open').length,
-          totalTrades: trades.length,
+          activeTrades: paperStats.openPositions,
+          totalTrades: paperStats.totalTrades,
+          winRate: paperStats.winRate,
+          liveTrading: process.env.ENABLE_LIVE_TRADING === 'true',
         },
         endpoints: {
-          telegram: 'http://localhost:3000/debug/telegram',
-          status: 'http://localhost:3000/api/system/status',
-          health: 'http://localhost:3000/health',
+          health: `http://localhost:${port}/health`,
+          status: `http://localhost:${port}/api/status`,
+          signals: `http://localhost:${port}/api/signals`,
+          paper: `http://localhost:${port}/api/paper`,
+          admin: `http://localhost:${port}/admin/login`,
+          debug: `http://localhost:${port}/debug/status`,
         }
       });
     } catch (err) {

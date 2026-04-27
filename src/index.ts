@@ -58,8 +58,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  telemetryLogger.info("🚀 Fee-Aware Moonshot Bot - Multi-User Production System", "main");
+  telemetryLogger.info("🚀 MoonShotForge v2.0 - Multi-User Solana Trading Bot", "main");
   telemetryLogger.info(`Environment: ${process.env.NODE_ENV || 'development'}`, "main");
+  telemetryLogger.info(`Port: ${process.env.PORT || process.env.API_PORT || '5000'}`, "main");
   telemetryLogger.info(`Live Trading: ${process.env.ENABLE_LIVE_TRADING === 'true' ? '🟢 ENABLED' : '🔴 DISABLED (Paper Mode)'}`, "main");
 
   // Graceful shutdown handler

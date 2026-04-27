@@ -4,7 +4,7 @@
 module.exports = {
   apps: [
     {
-      name: 'fee-aware-moonshot-bot',
+      name: 'moonshotforge',
       script: './dist/index.js',
       instances: 1,
       exec_mode: 'cluster',

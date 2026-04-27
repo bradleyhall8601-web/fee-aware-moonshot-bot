@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MoonShotForge — Connect Wallet</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',sans-serif;background:#0a0a0f;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{background:#1a1a2e;border:1px solid #2d2d4e;border-radius:16px;padding:40px;width:100%;max-width:480px}
+  h1{font-size:1.5rem;color:#22c55e;margin-bottom:0.5rem;text-align:center}
+  .subtitle{color:#94a3b8;text-align:center;margin-bottom:2rem;font-size:0.9rem}
+  .info-box{background:#0a0a0f;border:1px solid #2d2d4e;border-radius:8px;padding:16px;margin-bottom:1.5rem}
+  .info-box h3{color:#22c55e;margin-bottom:0.5rem;font-size:0.95rem}
+  .info-box p{color:#94a3b8;font-size:0.85rem;line-height:1.6}
+  .mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem}
+  .mode-card{background:#0a0a0f;border:2px solid #2d2d4e;border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:all 0.2s}
+  .mode-card.active{border-color:#22c55e;background:#1e3a2e}
+  .mode-card h3{font-size:0.95rem;margin-bottom:0.5rem}
+  .mode-card p{color:#94a3b8;font-size:0.8rem}
+  .mode-paper h3{color:#3b82f6}
+  .mode-live h3{color:#22c55e}
+  .mode-live{opacity:0.6}
+  .btn{width:100%;padding:14px;background:linear-gradient(90deg,#22c55e,#16a34a);color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;margin-bottom:0.75rem;transition:opacity 0.2s}
+  .btn:hover{opacity:0.9}
+  .btn-secondary{background:transparent;border:1px solid #2d2d4e;color:#94a3b8}
+  .btn-secondary:hover{border-color:#22c55e;color:#22c55e}
+  .warning{background:#1c1007;border:1px solid #78350f;border-radius:8px;padding:12px;margin-bottom:1.5rem;color:#f59e0b;font-size:0.85rem}
+  .back{text-align:center;margin-top:1rem}
+  .back a{color:#22c55e;text-decoration:none;font-size:0.9rem}
+  .address-display{background:#0a0a0f;border:1px solid #22c55e;border-radius:8px;padding:12px;font-family:monospace;font-size:0.85rem;word-break:break-all;color:#22c55e;margin-bottom:1rem}
+</style>
+</head>
+<body>
+<div class="card">
+  <div style="text-align:center;font-size:2rem;margin-bottom:0.5rem">💼</div>
+  <h1>Connect Wallet</h1>
+  <p class="subtitle">Link your Solana wallet to MoonShotForge</p>
+
+  <div class="warning">
+    ⚠️ <strong>Security Notice:</strong> MoonShotForge never stores your private key in plain text. Your wallet address is used for balance tracking only. Private keys are encrypted with AES-256-GCM.
+  </div>
+
+  <div class="info-box">
+    <h3>📱 Connect via Telegram</h3>
+    <p>The easiest way to connect your wallet is through the Telegram bot. Use /start to register and follow the wallet setup flow.</p>
+  </div>
+
+  <div class="mode-grid">
+    <div class="mode-card mode-paper active" onclick="selectMode('paper')">
+      <h3>📄 Paper Mode</h3>
+      <p>Simulated trading. No real funds. Perfect for testing.</p>
+    </div>
+    <div class="mode-card mode-live" onclick="selectMode('live')">
+      <h3>🟢 Live Mode</h3>
+      <p>Real trading. Requires subscription + admin approval.</p>
+    </div>
+  </div>
+
+  <div id="paper-info" class="info-box">
+    <h3>📄 Paper Trading Mode</h3>
+    <p>In paper mode, all trades are simulated. You can see signals, track performance, and learn the system without risking real funds. This is the default mode for all new users.</p>
+  </div>
+
+  <div id="live-info" class="info-box" style="display:none">
+    <h3>🟢 Live Trading Mode</h3>
+    <p>Live mode requires:<br>
+    ✅ Active subscription ($49.99/month)<br>
+    ✅ Wallet connected with SOL balance<br>
+    ✅ Admin approval<br>
+    ✅ AI readiness score ≥ 70%<br><br>
+    Use /live in Telegram to request live mode.</p>
+  </div>
+
+  <button class="btn" onclick="openTelegram()">📱 Open Telegram Bot</button>
+  <button class="btn btn-secondary" onclick="window.location.href='/admin/login'">🔧 Admin Login</button>
+
+  <div class="back"><a href="/">← Back to Home</a></div>
+</div>
+
+<script>
+function selectMode(mode) {
+  document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('active'));
+  document.querySelector('.mode-' + mode).classList.add('active');
+  document.getElementById('paper-info').style.display = mode === 'paper' ? 'block' : 'none';
+  document.getElementById('live-info').style.display = mode === 'live' ? 'block' : 'none';
+}
+
+function openTelegram() {
+  const botUsername = 'MoonShotForgeBot'; // Update with actual bot username
+  window.open('https://t.me/' + botUsername, '_blank');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MoonShotForge — Debug</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:monospace;background:#0a0a0f;color:#22c55e;padding:20px}
+  h1{font-size:1.5rem;margin-bottom:1.5rem;color:#22c55e}
+  .section{background:#1a1a2e;border:1px solid #2d2d4e;border-radius:8px;padding:16px;margin-bottom:1rem}
+  .section h2{font-size:1rem;color:#3b82f6;margin-bottom:1rem}
+  .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1e293b;font-size:0.85rem}
+  .row:last-child{border-bottom:none}
+  .ok{color:#22c55e}
+  .warn{color:#f59e0b}
+  .err{color:#ef4444}
+  pre{background:#0a0a0f;padding:12px;border-radius:6px;font-size:0.75rem;overflow-x:auto;max-height:300px;overflow-y:auto;color:#94a3b8}
+  .refresh{background:transparent;border:1px solid #22c55e;color:#22c55e;padding:8px 16px;border-radius:6px;cursor:pointer;font-family:monospace;margin-bottom:1rem}
+  .refresh:hover{background:#1e3a2e}
+</style>
+</head>
+<body>
+<h1>🔍 MoonShotForge Debug</h1>
+<button class="refresh" onclick="loadAll()">↻ Refresh</button>
+
+<div class="section">
+  <h2>System Status</h2>
+  <div id="system-status"><div class="row"><span>Loading...</span></div></div>
+</div>
+
+<div class="section">
+  <h2>Environment Variables (presence only)</h2>
+  <div id="env-status"><div class="row"><span>Loading...</span></div></div>
+</div>
+
+<div class="section">
+  <h2>Services</h2>
+  <div id="services-status"><div class="row"><span>Loading...</span></div></div>
+</div>
+
+<div class="section">
+  <h2>Recent Signals</h2>
+  <div id="signals-status"><div class="row"><span>Loading...</span></div></div>
+</div>
+
+<div class="section">
+  <h2>Raw API Response</h2>
+  <pre id="raw-response">Loading...</pre>
+</div>
+
+<script>
+async function loadAll() {
+  try {
+    const r = await fetch('/debug/status');
+    const d = await r.json();
+    document.getElementById('raw-response').textContent = JSON.stringify(d, null, 2);
+
+    document.getElementById('system-status').innerHTML = `
+      <div class="row"><span>Node Version</span><span class="ok">${d.nodeVersion}</span></div>
+      <div class="row"><span>Platform</span><span class="ok">${d.platform}</span></div>
+      <div class="row"><span>Uptime</span><span class="ok">${Math.round(d.system?.uptime||0)}s</span></div>
+      <div class="row"><span>Memory (heap)</span><span class="${(d.system?.memory?.heapUsed||0)/1024/1024>400?'warn':'ok'}">${Math.round((d.system?.memory?.heapUsed||0)/1024/1024)}MB</span></div>
+      <div class="row"><span>Environment</span><span class="ok">${d.environment}</span></div>
+      <div class="row"><span>Total Users</span><span class="ok">${d.bot?.totalUsers||0}</span></div>
+      <div class="row"><span>Active Trades</span><span class="ok">${d.bot?.activeTrades||0}</span></div>
+    `;
+
+    document.getElementById('env-status').innerHTML = `
+      <div class="row"><span>TELEGRAM_BOT_TOKEN</span><span class="${d.bot?.telegramToken?.includes('✓')?'ok':'err'}">${d.bot?.telegramToken||'Not checked'}</span></div>
+      <div class="row"><span>OPENAI_API_KEY</span><span class="${process.env?.OPENAI_API_KEY?'ok':'warn'}">Check server logs</span></div>
+      <div class="row"><span>ENCRYPTION_KEY</span><span class="warn">Hidden for security</span></div>
+      <div class="row"><span>ADMIN_PASSWORD</span><span class="warn">Hidden for security</span></div>
+    `;
+
+    document.getElementById('services-status').innerHTML = `
+      <div class="row"><span>API Server</span><span class="ok">✓ Running on port ${d.endpoints?.health?.split(':')[2]?.split('/')[0]||'5000'}</span></div>
+      <div class="row"><span>Telegram Bot</span><span class="${d.bot?.telegramToken?.includes('✓')?'ok':'warn'}">${d.bot?.telegramToken?.includes('✓')?'✓ Token set':'⚠ Token missing'}</span></div>
+      <div class="row"><span>Database</span><span class="ok">✓ SQLite connected</span></div>
+    `;
+  } catch(e) {
+    document.getElementById('raw-response').textContent = 'Error: ' + e.message;
+  }
+
+  try {
+    const r = await fetch('/api/signals');
+    const signals = await r.json();
+    document.getElementById('signals-status').innerHTML = signals.length === 0
+      ? '<div class="row"><span>No signals yet</span><span class="warn">Bot scanning...</span></div>'
+      : signals.slice(0,5).map(s => `<div class="row"><span>${s.symbol} (${s.mode})</span><span class="${s.decision==='BUY'?'ok':'warn'}">${s.decision} ${s.confidence}/100</span></div>`).join('');
+  } catch(e) {}
+}
+
+loadAll();
+setInterval(loadAll, 10000);
+</script>
+</body>
+</html>

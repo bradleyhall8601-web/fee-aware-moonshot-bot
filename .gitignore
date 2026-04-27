@@ -1,5 +1,4 @@
 node_modules/
-package-lock.json
 .env
 .env.local
 state.json
@@ -8,3 +7,9 @@ dist/
 .vscode/
 .idea/
 .DS_Store
+data/*.db
+data/*.db-shm
+data/*.db-wal
+logs/
+frontend/dist/
+frontend/node_modules/
