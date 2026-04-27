@@ -1,4 +1,4 @@
-FROM node:18-alpine AS base
+FROM node:20-alpine AS base
 WORKDIR /app
 RUN apk add --no-cache python3 make g++ dumb-init
 
@@ -24,10 +24,8 @@ COPY src ./src
 RUN npm run build:backend
 
 # ── Stage 3: Production image ─────────────────────────────────────────────────
-FROM node:18-alpine AS production
+FROM base AS production
 WORKDIR /app
-
-RUN apk add --no-cache dumb-init
 
 # Copy backend production deps
 COPY package*.json ./
