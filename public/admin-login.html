@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MoonShotForge — Admin Login</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',sans-serif;background:#0a0a0f;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center}
+  .login-card{background:#1a1a2e;border:1px solid #2d2d4e;border-radius:16px;padding:40px;width:100%;max-width:420px}
+  .logo{text-align:center;font-size:2.5rem;margin-bottom:0.5rem}
+  h1{text-align:center;font-size:1.5rem;color:#22c55e;margin-bottom:0.5rem}
+  .subtitle{text-align:center;color:#94a3b8;font-size:0.9rem;margin-bottom:2rem}
+  label{display:block;color:#94a3b8;font-size:0.85rem;margin-bottom:0.5rem}
+  input{width:100%;padding:12px 16px;background:#0a0a0f;border:1px solid #2d2d4e;border-radius:8px;color:#e2e8f0;font-size:1rem;margin-bottom:1.5rem;outline:none;transition:border-color 0.2s}
+  input:focus{border-color:#22c55e}
+  button{width:100%;padding:14px;background:linear-gradient(90deg,#22c55e,#16a34a);color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;transition:opacity 0.2s}
+  button:hover{opacity:0.9}
+  .error{color:#ef4444;font-size:0.85rem;margin-bottom:1rem;display:none}
+  .back{text-align:center;margin-top:1.5rem}
+  .back a{color:#22c55e;text-decoration:none;font-size:0.9rem}
+  .tabs{display:flex;gap:0.5rem;margin-bottom:2rem}
+  .tab{flex:1;padding:10px;background:#0a0a0f;border:1px solid #2d2d4e;border-radius:8px;color:#94a3b8;cursor:pointer;text-align:center;font-size:0.9rem;transition:all 0.2s}
+  .tab.active{background:#1e3a2e;border-color:#22c55e;color:#22c55e}
+  #dashboard{display:none}
+  .dashboard-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem}
+  .stat{background:#0a0a0f;border:1px solid #2d2d4e;border-radius:8px;padding:16px;text-align:center}
+  .stat-val{font-size:1.5rem;font-weight:700;color:#22c55e}
+  .stat-lbl{color:#94a3b8;font-size:0.8rem;margin-top:0.25rem}
+  .action-btn{width:100%;padding:10px;margin-bottom:0.5rem;background:#0a0a0f;border:1px solid #2d2d4e;border-radius:8px;color:#e2e8f0;cursor:pointer;text-align:left;font-size:0.9rem;transition:border-color 0.2s}
+  .action-btn:hover{border-color:#22c55e;color:#22c55e}
+  .action-btn.danger{border-color:#7f1d1d;color:#ef4444}
+  .action-btn.danger:hover{border-color:#ef4444}
+  .section-title{color:#94a3b8;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75rem;margin-top:1.5rem}
+  #signal-list{max-height:200px;overflow-y:auto}
+  .signal-row{background:#0a0a0f;border:1px solid #2d2d4e;border-radius:6px;padding:10px;margin-bottom:0.5rem;font-size:0.85rem}
+  .signal-buy{border-left:3px solid #22c55e}
+  .signal-watch{border-left:3px solid #f59e0b}
+  .logout-btn{background:transparent;border:1px solid #2d2d4e;color:#94a3b8;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:0.85rem}
+  .logout-btn:hover{border-color:#ef4444;color:#ef4444}
+</style>
+</head>
+<body>
+<div class="login-card" id="login-section">
+  <div class="logo">🔧</div>
+  <h1>Admin Login</h1>
+  <p class="subtitle">MoonShotForge Control Panel</p>
+  <div class="error" id="error-msg"></div>
+  <label>Password</label>
+  <input type="password" id="password" placeholder="Enter admin password" onkeydown="if(event.key==='Enter')login()">
+  <button onclick="login()">Login →</button>
+  <div class="back"><a href="/">← Back to Home</a></div>
+</div>
+
+<div class="login-card" id="dashboard" style="max-width:600px">
+  <div class="dashboard-header">
+    <div><div class="logo" style="font-size:1.5rem;display:inline">🔧</div> <strong>Admin Dashboard</strong></div>
+    <button class="logout-btn" onclick="logout()">Logout</button>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('overview')">Overview</div>
+    <div class="tab" onclick="showTab('signals')">Signals</div>
+    <div class="tab" onclick="showTab('actions')">Actions</div>
+  </div>
+
+  <div id="tab-overview">
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-val" id="d-uptime">--</div><div class="stat-lbl">Uptime (min)</div></div>
+      <div class="stat"><div class="stat-val" id="d-users">--</div><div class="stat-lbl">Active Users</div></div>
+      <div class="stat"><div class="stat-val" id="d-winrate">--</div><div class="stat-lbl">Win Rate</div></div>
+      <div class="stat"><div class="stat-val" id="d-trades">--</div><div class="stat-lbl">Total Trades</div></div>
+      <div class="stat"><div class="stat-val" id="d-threshold">--</div><div class="stat-lbl">Conf Threshold</div></div>
+      <div class="stat"><div class="stat-val" id="d-mode">--</div><div class="stat-lbl">Trading Mode</div></div>
+    </div>
+  </div>
+
+  <div id="tab-signals" style="display:none">
+    <div class="section-title">Recent Signals</div>
+    <div id="signal-list"><p style="color:#475569">Loading...</p></div>
+  </div>
+
+  <div id="tab-actions" style="display:none">
+    <div class="section-title">System Actions</div>
+    <button class="action-btn danger" onclick="killSwitch()">🛑 Emergency Kill — Disable Live Trading</button>
+    <div class="section-title">User Management</div>
+    <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+      <input id="grant-user" placeholder="User ID or Telegram ID" style="margin-bottom:0;flex:1">
+      <button onclick="grantUser()" style="width:auto;padding:10px 16px">Grant</button>
+    </div>
+    <div style="display:flex;gap:0.5rem">
+      <input id="revoke-user" placeholder="User ID or Telegram ID" style="margin-bottom:0;flex:1">
+      <button onclick="revokeUser()" style="width:auto;padding:10px 16px;background:linear-gradient(90deg,#ef4444,#dc2626)">Revoke</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let token = localStorage.getItem('admin_token');
+if (token) checkToken();
+
+async function checkToken() {
+  try {
+    const r = await fetch('/api/status', { headers: { Authorization: 'Bearer ' + token } });
+    if (r.ok) showDashboard();
+  } catch(e) { token = null; }
+}
+
+async function login() {
+  const pw = document.getElementById('password').value;
+  const err = document.getElementById('error-msg');
+  err.style.display = 'none';
+  try {
+    const r = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw })
+    });
+    const d = await r.json();
+    if (d.success) {
+      token = d.token;
+      localStorage.setItem('admin_token', token);
+      showDashboard();
+    } else {
+      err.textContent = d.error || 'Login failed';
+      err.style.display = 'block';
+    }
+  } catch(e) {
+    err.textContent = 'Connection error';
+    err.style.display = 'block';
+  }
+}
+
+function showDashboard() {
+  document.getElementById('login-section').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  loadDashboard();
+  setInterval(loadDashboard, 15000);
+}
+
+async function loadDashboard() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    document.getElementById('d-uptime').textContent = Math.round((d.uptime||0)/60);
+    document.getElementById('d-users').textContent = d.activeUsers || 0;
+    document.getElementById('d-mode').textContent = d.mode || 'PAPER';
+  } catch(e) {}
+  try {
+    const r = await fetch('/api/paper');
+    const d = await r.json();
+    document.getElementById('d-winrate').textContent = (d.stats?.winRate||0).toFixed(1) + '%';
+    document.getElementById('d-trades').textContent = d.stats?.totalTrades || 0;
+  } catch(e) {}
+  try {
+    const r = await fetch('/api/health');
+    const d = await r.json();
+    document.getElementById('d-threshold').textContent = d.trading?.winRate?.toFixed(0) || '--';
+  } catch(e) {}
+}
+
+async function loadSignals() {
+  try {
+    const r = await fetch('/api/signals');
+    const signals = await r.json();
+    const list = document.getElementById('signal-list');
+    if (!signals.length) { list.innerHTML = '<p style="color:#475569">No signals yet</p>'; return; }
+    list.innerHTML = signals.slice(0,10).map(s => `
+      <div class="signal-row ${s.decision==='BUY'?'signal-buy':'signal-watch'}">
+        <strong>${s.symbol}</strong> — ${s.decision} (${s.confidence}/100) — ${s.mode}
+      </div>
+    `).join('');
+  } catch(e) {}
+}
+
+function showTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['overview','signals','actions'][i]===tab));
+  document.getElementById('tab-overview').style.display = tab==='overview'?'block':'none';
+  document.getElementById('tab-signals').style.display = tab==='signals'?'block':'none';
+  document.getElementById('tab-actions').style.display = tab==='actions'?'block':'none';
+  if (tab==='signals') loadSignals();
+}
+
+async function killSwitch() {
+  if (!confirm('Disable live trading globally?')) return;
+  await fetch('/api/admin/kill', { method: 'POST', headers: { Authorization: 'Bearer ' + token } });
+  alert('Live trading disabled');
+}
+
+async function grantUser() {
+  const userId = document.getElementById('grant-user').value;
+  if (!userId) return;
+  await fetch('/api/admin/grant', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify({ userId, days: 30 })
+  });
+  alert('Access granted for 30 days');
+}
+
+async function revokeUser() {
+  const userId = document.getElementById('revoke-user').value;
+  if (!userId) return;
+  await fetch('/api/admin/revoke', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify({ userId })
+  });
+  alert('Access revoked');
+}
+
+function logout() {
+  localStorage.removeItem('admin_token');
+  token = null;
+  document.getElementById('login-section').style.display = 'block';
+  document.getElementById('dashboard').style.display = 'none';
+}
+</script>
+</body>
+</html>

@@ -10,8 +10,22 @@ module.exports = {
     '!src/__tests__/**',
   ],
   transform: {
-    '^.+\\.tsx?$': 'ts-jest',
+    '^.+\\.tsx?
+
+: ['ts-jest', {
+      useESM: false,
+      tsconfig: {
+        module: 'commonjs',
+        moduleResolution: 'node',
+      },
+    }],
   },
   testPathIgnorePatterns: ['/node_modules/', '/dist/'],
+  extensionsToTreatAsEsm: [],
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js
+
+: '$1',
+  },
 };
 

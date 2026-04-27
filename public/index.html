@@ -1,1 +1,126 @@
-<!DOCTYPE html><html><body><h1>Dashboard</h1><pre id='d'></pre><script>async function f(){let s=await fetch('/api/system/status').then(r=>r.json());document.getElementById('d').textContent=JSON.stringify(s,null,2);}f();setInterval(f,3000);</script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MoonShotForge — Solana Trading Bot</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',sans-serif;background:#0a0a0f;color:#e2e8f0;min-height:100vh}
+  .hero{background:linear-gradient(135deg,#0a0a0f 0%,#1a0a2e 50%,#0a0a0f 100%);padding:80px 20px;text-align:center}
+  .logo{font-size:3rem;margin-bottom:1rem}
+  h1{font-size:2.5rem;background:linear-gradient(90deg,#22c55e,#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:1rem}
+  .subtitle{font-size:1.2rem;color:#94a3b8;margin-bottom:2rem}
+  .cta-buttons{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
+  .btn{padding:12px 28px;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;text-decoration:none;transition:all 0.2s}
+  .btn-primary{background:linear-gradient(90deg,#22c55e,#16a34a);color:#fff;border:none}
+  .btn-secondary{background:transparent;color:#22c55e;border:2px solid #22c55e}
+  .btn:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(34,197,94,0.3)}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.5rem;padding:40px 20px;max-width:1200px;margin:0 auto}
+  .stat-card{background:#1a1a2e;border:1px solid #2d2d4e;border-radius:12px;padding:24px;text-align:center}
+  .stat-value{font-size:2rem;font-weight:700;color:#22c55e}
+  .stat-label{color:#94a3b8;margin-top:0.5rem}
+  .features{padding:60px 20px;max-width:1200px;margin:0 auto}
+  .features h2{text-align:center;font-size:2rem;margin-bottom:2rem;color:#22c55e}
+  .feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem}
+  .feature-card{background:#1a1a2e;border:1px solid #2d2d4e;border-radius:12px;padding:24px}
+  .feature-icon{font-size:2rem;margin-bottom:1rem}
+  .feature-title{font-size:1.1rem;font-weight:600;margin-bottom:0.5rem;color:#e2e8f0}
+  .feature-desc{color:#94a3b8;font-size:0.9rem;line-height:1.6}
+  .signal-feed{padding:40px 20px;max-width:1200px;margin:0 auto}
+  .signal-feed h2{font-size:1.5rem;margin-bottom:1rem;color:#22c55e}
+  .signal-item{background:#1a1a2e;border:1px solid #2d2d4e;border-radius:8px;padding:16px;margin-bottom:0.75rem;display:flex;justify-content:space-between;align-items:center}
+  .signal-buy{border-left:4px solid #22c55e}
+  .signal-watch{border-left:4px solid #f59e0b}
+  .badge{padding:4px 10px;border-radius:4px;font-size:0.8rem;font-weight:600}
+  .badge-buy{background:#166534;color:#22c55e}
+  .badge-watch{background:#78350f;color:#f59e0b}
+  footer{text-align:center;padding:40px 20px;color:#475569;border-top:1px solid #1e293b}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+  .live-dot{width:8px;height:8px;background:#22c55e;border-radius:50%;display:inline-block;animation:pulse 2s infinite;margin-right:6px}
+</style>
+</head>
+<body>
+<div class="hero">
+  <div class="logo">🚀</div>
+  <h1>MoonShotForge</h1>
+  <p class="subtitle">Production-ready Solana meme-coin signal & trading bot<br>Powered by AI • Multi-source signals • Paper & Live trading</p>
+  <div class="cta-buttons">
+    <a href="https://t.me/" class="btn btn-primary">📱 Join Telegram Bot</a>
+    <a href="/admin/login" class="btn btn-secondary">🔧 Admin Dashboard</a>
+    <a href="/wallet-connect.html" class="btn btn-secondary">💼 Connect Wallet</a>
+  </div>
+</div>
+
+<div class="stats" id="stats">
+  <div class="stat-card"><div class="stat-value" id="uptime">--</div><div class="stat-label">Uptime (min)</div></div>
+  <div class="stat-card"><div class="stat-value" id="users">--</div><div class="stat-label">Active Users</div></div>
+  <div class="stat-card"><div class="stat-value" id="winrate">--</div><div class="stat-label">Win Rate</div></div>
+  <div class="stat-card"><div class="stat-value" id="trades">--</div><div class="stat-label">Total Trades</div></div>
+</div>
+
+<div class="features">
+  <h2>🎯 Features</h2>
+  <div class="feature-grid">
+    <div class="feature-card"><div class="feature-icon">📡</div><div class="feature-title">Multi-Source Signals</div><div class="feature-desc">DexScreener, GeckoTerminal, PumpFun, Raydium, Birdeye — all aggregated and deduplicated in real-time.</div></div>
+    <div class="feature-card"><div class="feature-icon">🤖</div><div class="feature-title">AI Signal Gate</div><div class="feature-desc">GPT-4o-mini analyzes every signal before execution. 8-component confidence scoring with adaptive weights.</div></div>
+    <div class="feature-card"><div class="feature-icon">📄</div><div class="feature-title">Paper Trading</div><div class="feature-desc">Simulate across 8 wallet sizes (20-10000 SOL). Track performance before going live.</div></div>
+    <div class="feature-card"><div class="feature-icon">🔒</div><div class="feature-title">Live Trading (Locked)</div><div class="feature-desc">Jupiter-powered live trading. Disabled by default. Requires subscription + admin approval.</div></div>
+    <div class="feature-card"><div class="feature-icon">🧠</div><div class="feature-title">Self-Learning AI</div><div class="feature-desc">30-minute learning cycles. Adaptive thresholds. Golden lock system after 10 consecutive wins.</div></div>
+    <div class="feature-card"><div class="feature-icon">💳</div><div class="feature-title">Subscriptions</div><div class="feature-desc">$49.99/month via PayPal or SOL. Automatic SOL payment detection. Manual PayPal approval.</div></div>
+  </div>
+</div>
+
+<div class="signal-feed">
+  <h2><span class="live-dot"></span>Live Signals</h2>
+  <div id="signals-container"><p style="color:#475569">Loading signals...</p></div>
+</div>
+
+<footer>
+  <p>MoonShotForge v2.0 — Solana Trading Bot</p>
+  <p style="margin-top:0.5rem"><a href="/admin/login" style="color:#22c55e">Admin</a> · <a href="/debug.html" style="color:#22c55e">Debug</a> · <a href="/wallet-connect.html" style="color:#22c55e">Wallet</a></p>
+</footer>
+
+<script>
+async function loadStats() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    document.getElementById('uptime').textContent = Math.round((d.uptime||0)/60);
+    document.getElementById('users').textContent = d.activeUsers || 0;
+  } catch(e) {}
+  try {
+    const r = await fetch('/api/paper');
+    const d = await r.json();
+    document.getElementById('winrate').textContent = (d.stats?.winRate||0).toFixed(1) + '%';
+    document.getElementById('trades').textContent = d.stats?.totalTrades || 0;
+  } catch(e) {}
+}
+
+async function loadSignals() {
+  try {
+    const r = await fetch('/api/signals');
+    const signals = await r.json();
+    const container = document.getElementById('signals-container');
+    if (!signals.length) { container.innerHTML = '<p style="color:#475569">No signals yet. Bot is scanning...</p>'; return; }
+    container.innerHTML = signals.slice(0,5).map(s => `
+      <div class="signal-item ${s.decision==='BUY'?'signal-buy':'signal-watch'}">
+        <div>
+          <strong>${s.symbol}</strong>
+          <span style="color:#94a3b8;margin-left:8px;font-size:0.85rem">${s.mode}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:1rem">
+          <span style="color:#94a3b8;font-size:0.85rem">Conf: ${s.confidence}/100</span>
+          <span class="badge ${s.decision==='BUY'?'badge-buy':'badge-watch'}">${s.decision}</span>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {}
+}
+
+loadStats(); loadSignals();
+setInterval(loadStats, 30000);
+setInterval(loadSignals, 15000);
+</script>
+</body>
+</html>

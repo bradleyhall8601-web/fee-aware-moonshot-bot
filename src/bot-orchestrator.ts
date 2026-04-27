@@ -9,6 +9,21 @@ import telegramBot from './telegram-multi';
 import tradingEngine from './trading-engine';
 import apiServer from './api-server';
 import dexMarketData from './dex-market-data';
+import signalAggregator from './signal-aggregator';
+import confidenceScorer from './confidence-scorer';
+import adaptiveStrategy from './adaptive-strategy-engine';
+import aiSignalEngine from './ai-signal-engine';
+import paperTrading from './paper-trading';
+import aiSelfImprove from './ai-self-improve';
+import winStreakLearner from './win-streak-learner';
+import pnlLearning from './pnl-learning';
+import failureMemory from './failure-memory';
+import coinLearning from './coin-learning';
+import cascadeState from './cascade-state';
+import stabilityMonitor from './stability-monitor';
+import systemHealth from './system-health';
+import bossAI from './boss-ai';
+import aiSupport from './ai-support';
 
 interface BotState {
   isRunning: boolean;
@@ -32,7 +47,7 @@ class BotOrchestrator {
   private pollInterval: NodeJS.Timeout | null = null;
   private monitorInterval: NodeJS.Timeout | null = null;
   private metricsInterval: NodeJS.Timeout | null = null;
-  private cachedCandidates: Awaited<ReturnType<typeof dexMarketData.getMoonshotCandidates>> = [];
+  private cachedCandidates: any[] = [];
   private lastCandidateFetchAt = 0;
   private readonly candidateRefreshMs = parseInt(process.env.CANDIDATE_REFRESH_MS || '15000', 10);
 
@@ -53,15 +68,78 @@ class BotOrchestrator {
   }
 
   private async initializeSystems(): Promise<void> {
+    // Start stability monitor
+    stabilityMonitor.start();
+
+    // Start paper trading engine
+    paperTrading.start((pos) => {
+      // On paper trade close, record outcomes
+      const win = (pos.profitPct || 0) > 0;
+      aiSelfImprove.recordResult(win);
+      winStreakLearner[win ? 'recordWin' : 'recordLoss']();
+      aiSignalEngine.recordOutcome(win);
+      pnlLearning.record({
+        id: pos.id,
+        mint: pos.mint,
+        symbol: pos.symbol,
+        mode: pos.mode,
+        entryPrice: pos.entryPrice,
+        exitPrice: pos.exitPrice || pos.entryPrice,
+        profitPct: pos.profitPct || 0,
+        profitUsd: pos.profitUsd || 0,
+        holdTimeMs: (pos.closedAt || Date.now()) - pos.openedAt,
+        confidence: 70,
+        sources: [],
+        closeReason: pos.closeReason || 'unknown',
+        timestamp: Date.now(),
+      });
+      coinLearning.recordTrade(pos.mint, pos.symbol, pos.profitPct || 0, (pos.closedAt || Date.now()) - pos.openedAt, pos.mode, win);
+      if (win) {
+        telemetryLogger.info(`[PAPER] WIN: ${pos.symbol} +${(pos.profitPct || 0).toFixed(2)}%`, 'orchestrator');
+      } else {
+        telemetryLogger.info(`[PAPER] LOSS: ${pos.symbol} ${(pos.profitPct || 0).toFixed(2)}%`, 'orchestrator');
+        failureMemory.recordFailure({
+          mint: pos.mint,
+          symbol: pos.symbol,
+          reason: pos.closeReason || 'stop_loss',
+          confidence: 70,
+          liquidity: 0,
+          buyPressure: 0,
+          ageHours: 0,
+          timestamp: Date.now(),
+          lossPercent: pos.profitPct,
+        });
+      }
+    });
+
+    // Start AI self-improvement
+    aiSelfImprove.start();
+
+    // Load golden params
+    winStreakLearner.loadGoldenParams();
+    winStreakLearner.setGoldenLockCallback((params) => {
+      telemetryLogger.info(`🏆 GOLDEN LOCK: ${JSON.stringify(params)}`, 'orchestrator');
+    });
+
+    // Initialize AI engines
+    await aiSignalEngine.initialize();
+    await bossAI.initialize();
+    await aiSupport.initialize();
+
+    // Start API server
     await apiServer.start();
     telemetryLogger.info('API Server initialized', 'orchestrator');
+
+    // Initialize Telegram
     const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
     if (telegramToken) {
       await telegramBot.initialize(telegramToken);
+      systemHealth.setServiceStatus('telegram', true);
       telemetryLogger.info('Telegram Bot initialized', 'orchestrator');
     } else {
       telemetryLogger.warn('Telegram token missing, bot notifications disabled', 'orchestrator');
     }
+
     telemetryLogger.info('All systems initialized', 'orchestrator');
   }
 
@@ -93,15 +171,14 @@ class BotOrchestrator {
   private startMetricsCollection(): void {
     this.metricsInterval = setInterval(() => {
       const users = userManager.getAllActiveUsers();
-      const trades = users.flatMap(user => database.getUserTradingSessions(user.id));
-      const openTrades = trades.filter(t => t.status === 'open').length;
+      const paperStats = paperTrading.getStats();
       telemetryLogger.recordMetrics({
         activeUsers: users.length,
-        activeTrades: openTrades,
-        totalProfit: trades.filter(t => t.status === 'closed').reduce((sum, t) => sum + (t.profit || 0), 0),
+        activeTrades: paperStats.openPositions,
+        totalProfit: paperStats.totalProfit,
       });
       this.state.activeUsers = users.length;
-      this.state.activeTrades = openTrades;
+      this.state.activeTrades = paperStats.openPositions;
       this.state.uptime = process.uptime();
     }, 60000);
   }
@@ -117,41 +194,122 @@ class BotOrchestrator {
   }
 
   private async executeTradingCycle(): Promise<void> {
-    const users = userManager.getAllActiveUsers();
-    const candidates = await this.getFreshCandidates();
-    const candidatePrices = new Map<string, number>();
-    candidates.forEach(candidate => candidatePrices.set(candidate.mint, candidate.price));
-    let buySignalsSent = 0;
-    for (const user of users) {
-      try {
-        const config = userManager.getUserConfig(user.id);
-        if (!config) continue;
-        await tradingEngine.manageTrades(user.id, candidatePrices);
-        const refreshedOpenTrades = database.getUserTradingSessions(user.id).filter(session => session.status === 'open');
-        if (refreshedOpenTrades.length >= 3) {
-          telemetryLogger.info(`Skipping new entries for ${user.username}, max open trades reached`, 'orchestrator');
+    const cycle = cascadeState.startCycle();
+    stabilityMonitor.recordCycle();
+
+    try {
+      // Stage 1: Aggregate signals
+      cascadeState.update({ stage: 'aggregating' });
+      const signals = await signalAggregator.aggregate();
+      cascadeState.update({ candidatesFound: signals.length });
+      telemetryLogger.info(`[CYCLE] ${signals.length} signals aggregated`, 'orchestrator');
+
+      if (signals.length === 0) {
+        cascadeState.completeCycle();
+        return;
+      }
+
+      // Stage 2: Score and filter
+      cascadeState.update({ stage: 'scoring' });
+      let buyCount = 0;
+      let skipCount = 0;
+      let watchCount = 0;
+
+      for (const signal of signals) {
+        // Hard skip rules
+        if (signal.liquidity < parseFloat(process.env.MIN_LIQUIDITY_USDC || '10000')) continue;
+        if (signal.volume1h < parseFloat(process.env.MIN_VOLUME_1H || '1000')) continue;
+        if (!signal.price || signal.price <= 0) continue;
+        if (!signal.mint) continue;
+        if (signal.rugRisk) continue;
+        if (failureMemory.isBlocked(signal.mint)) continue;
+
+        // Score confidence
+        const confidence = confidenceScorer.score(signal);
+
+        if (!confidence.sniperPasses) {
+          skipCount++;
           continue;
         }
-        const availableSlots = Math.max(0, 3 - refreshedOpenTrades.length);
-        const blockedMints = new Set(refreshedOpenTrades.map(trade => trade.tokenMint));
-        const topCandidates = candidates.filter(candidate => candidate.confidence >= 70 && !blockedMints.has(candidate.mint)).slice(0, availableSlots);
-        for (const candidate of topCandidates) {
-          const signal = await tradingEngine.analyzeMoonshot(candidate.mint, candidate);
-          if (!signal || signal.type !== 'BUY') continue;
-          const success = await tradingEngine.executeBuyTrade(user.id, signal, (config.tradeSize as number) || 30);
-          if (success) {
-            buySignalsSent += 1;
-            const modeLabel = config.enableLiveTrading ? 'LIVE' : 'PAPER';
-            const message = `${modeLabel} BUY SIGNAL\nToken: ${candidate.name} (${candidate.symbol})\nPrice: ${candidate.price.toFixed(8)}\nLiquidity: ${candidate.liquidity.toLocaleString()}\n24h Volume: ${candidate.volume24h.toLocaleString()}\nConfidence: ${candidate.confidence}%`;
-            await telegramBot.sendUserNotification(user.id, message);
+
+        // Select strategy mode
+        const strategy = adaptiveStrategy.selectMode(signal, confidence);
+        if (strategy.mode === 'SKIP') {
+          skipCount++;
+          continue;
+        }
+
+        // Stage 3: AI gate
+        const aiResult = await aiSignalEngine.evaluate(
+          signal,
+          confidence,
+          strategy.mode,
+          aiSignalEngine.getWinRate()
+        );
+
+        if (aiResult.decision === 'SKIP') {
+          skipCount++;
+          continue;
+        }
+
+        if (aiResult.decision === 'WATCH') {
+          watchCount++;
+          continue;
+        }
+
+        buyCount++;
+
+        // Log signal to DB
+        database.logSignal({
+          mint: signal.mint,
+          symbol: signal.symbol,
+          confidence: confidence.score,
+          decision: aiResult.decision,
+          mode: strategy.mode,
+          sources: signal.sources.join(','),
+          price: signal.price,
+          liquidity: signal.liquidity,
+          buyPressure: signal.buyPressure,
+          ageHours: signal.ageHours,
+        });
+
+        // Stage 4: Paper trading
+        const users = userManager.getAllActiveUsers();
+        for (const user of users) {
+          try {
+            const pos = await paperTrading.openPosition(user.id, signal, strategy);
+            if (pos) {
+              const msg = `🎯 *${strategy.mode} SIGNAL*\n\n${signal.symbol}\nConf: ${confidence.score}/100\nPrice: $${signal.price.toFixed(8)}\nLiq: $${signal.liquidity.toLocaleString()}\nBP: ${signal.buyPressure.toFixed(0)}%\nAge: ${signal.ageHours.toFixed(1)}h\nSources: ${signal.sources.join(', ')}\n\n${aiResult.reason}`;
+              await telegramBot.sendUserNotification(user.id, msg);
+            }
+          } catch (err) {
+            telemetryLogger.error(`Paper trade error for user ${user.id}`, 'orchestrator', err);
           }
         }
-      } catch (error) {
-        telemetryLogger.error(`Trade cycle error for user ${user.id}: ${error}`, 'orchestrator');
       }
+
+      // Update paper positions with current prices
+      for (const signal of signals) {
+        if (signal.price > 0) {
+          paperTrading.updatePrice(signal.mint, signal.price);
+        }
+      }
+
+      this.state.lastCycleAt = new Date().toISOString();
+      this.state.lastCycleSummary = `signals=${signals.length}, buy=${buyCount}, skip=${skipCount}, watch=${watchCount}`;
+      systemHealth.setServiceStatus('dex', true);
+
+      telemetryLogger.info(
+        `[CYCLE] Complete: signals=${signals.length} buy=${buyCount} skip=${skipCount} watch=${watchCount}`,
+        'orchestrator'
+      );
+    } catch (err) {
+      stabilityMonitor.recordError();
+      systemHealth.setServiceStatus('dex', false);
+      telemetryLogger.error('Trading cycle error', 'orchestrator', err);
     }
-    this.state.lastCycleAt = new Date().toISOString();
-    this.state.lastCycleSummary = `users=${users.length}, candidates=${candidates.length}, buySignals=${buySignalsSent}`;
+
+    cascadeState.completeCycle();
   }
 
   async shutdown(): Promise<void> {
@@ -161,6 +319,9 @@ class BotOrchestrator {
       if (this.pollInterval) clearInterval(this.pollInterval);
       if (this.monitorInterval) clearInterval(this.monitorInterval);
       if (this.metricsInterval) clearInterval(this.metricsInterval);
+      paperTrading.stop();
+      aiSelfImprove.stop();
+      stabilityMonitor.stop();
       await telegramBot.shutdown();
       await apiServer.stop();
       telemetryLogger.flushLogs();
