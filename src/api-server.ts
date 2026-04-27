@@ -177,7 +177,7 @@ class ApiServer {
   private async getTelegramDebugInfo(req: Request, res: Response): Promise<void> {
     try {
       // Import here to avoid circular deps
-      const telegramDebug = require('./telegram-debug').default;
+      const { default: telegramDebug } = await import('./telegram-debug.js');
       
       const users = userManager.getAllActiveUsers();
       const telegramUsers = users.map(u => ({
