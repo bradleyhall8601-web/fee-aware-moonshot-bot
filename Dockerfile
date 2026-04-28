@@ -23,16 +23,24 @@ RUN npm install
 COPY src ./src
 RUN npm run build:backend
 
-# ── Stage 3: Production image ─────────────────────────────────────────────────
+# ── Stage 3: Install production dependencies (needs build tools for native modules) ──
+FROM base AS prod-deps
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install --omit=dev
+
+# ── Stage 4: Production image ─────────────────────────────────────────────────
 FROM node:18-alpine AS production
 WORKDIR /app
 
 RUN apk add --no-cache dumb-init
 
-# Copy backend production deps
-COPY package*.json ./
-COPY tsconfig.json ./
-RUN npm install --omit=dev
+# Copy production node_modules (pre-built with native modules)
+COPY --from=prod-deps /app/node_modules ./node_modules
+
+# Copy package.json for module resolution
+COPY package.json ./
 
 # Copy compiled backend
 COPY --from=backend-builder /app/dist ./dist

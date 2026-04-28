@@ -1,5 +1,5 @@
-import { config } from "./config";
-import State from "./state";
+import { config } from "./config.js";
+import State from "./state.js";
 
 export function dumpDebugState(): string {
   return JSON.stringify(
