@@ -8,7 +8,7 @@
     "dev": "tsx src/index.ts",
     "build:frontend": "cd frontend && npm install && npm run build",
     "build:backend": "rm -rf dist && tsc -p tsconfig.json",
-    "build": "npm run build:frontend && npm run build:backend",
+    "build": "rm -rf dist && tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "health": "tsx src/index.ts health",
     "test": "jest --detectOpenHandles --forceExit",
