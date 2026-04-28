@@ -49,7 +49,7 @@ module.exports = {
       ref: 'origin/main',
       repo: 'git@github.com:bradleyhall8601-web/fee-aware-moonshot-bot.git',
       path: '/var/www/moonshot-bot',
-      'post-deploy': 'npm install && npm run build && pm2 stop ecosystem.config.js && pm2 start ecosystem.config.js'
+      'post-deploy': 'npm install && npm run build && pm2 stop ecosystem.config.cjs && pm2 start ecosystem.config.cjs'
     }
   }
 };

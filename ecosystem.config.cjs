@@ -1,4 +1,4 @@
-// ecosystem.config.js
+// ecosystem.config.cjs
 // PM2 configuration for production deployment
 
 module.exports = {
@@ -51,7 +51,7 @@ module.exports = {
       ref: 'origin/main',
       repo: 'https://github.com/bradleyhall8601-web/fee-aware-moonshot-bot.git',
       path: '/home/ubuntu/fee-aware-moonshot-bot',
-      'post-deploy': 'npm install && npm run build && pm2 restart ecosystem.config.js --env production',
+      'post-deploy': 'npm install && npm run build && pm2 restart ecosystem.config.cjs --env production',
       'pre-deploy-local': 'echo "Deploying to production"'
     }
   }
