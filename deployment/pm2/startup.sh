@@ -19,7 +19,7 @@ npm run build || exit 1
 
 # Start with PM2
 echo "🚀 Starting application with PM2..."
-pm2 start deployment/pm2/ecosystem.config.js
+pm2 start deployment/pm2/ecosystem.config.cjs
 
 # Enable startup script
 echo "🔧 Enabling PM2 startup script..."

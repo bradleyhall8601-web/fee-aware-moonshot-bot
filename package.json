@@ -19,11 +19,11 @@
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f bot",
-    "pm2:start": "npm run build && pm2 start ecosystem.config.js",
+    "pm2:start": "npm run build && pm2 start ecosystem.config.cjs",
     "pm2:stop": "pm2 stop fee-aware-moonshot-bot",
     "pm2:restart": "pm2 restart fee-aware-moonshot-bot",
     "pm2:logs": "pm2 logs",
-    "deploy:vps": "git pull origin main && npm install && npm run build && pm2 restart ecosystem.config.js"
+    "deploy:vps": "git pull origin main && npm install && npm run build && pm2 restart ecosystem.config.cjs"
   },
   "keywords": ["solana", "trading", "meme", "bot"],
   "author": "",
