@@ -2,7 +2,7 @@
 // Real-time market data from Raydium, Jupiter, and Orca
 
 import axios from 'axios';
-import telemetryLogger from './telemetry';
+import telemetryLogger from './telemetry.js';
 
 interface TokenInfo {
   mint: string;

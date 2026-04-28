@@ -1,5 +1,5 @@
 // src/__tests__/dex-market-data.spec.ts
-import dexMarketData from '../dex-market-data';
+import dexMarketData from '../dex-market-data.js';
 
 describe('DEX Market Data', () => {
   describe('MoonshotCandidate interface', () => {

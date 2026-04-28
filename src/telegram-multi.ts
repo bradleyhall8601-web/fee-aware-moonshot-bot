@@ -2,11 +2,11 @@
 // Multi-user Telegram Bot with registration and management
 
 import { Telegraf, Context, Markup } from 'telegraf';
-import userManager from './user-manager';
-import database from './database';
-import telemetryLogger from './telemetry';
-import registrationFlow from './telegram-registration';
-import telegramDebug from './telegram-debug';
+import userManager from './user-manager.js';
+import database from './database.js';
+import telemetryLogger from './telemetry.js';
+import registrationFlow from './telegram-registration.js';
+import telegramDebug from './telegram-debug.js';
 
 interface TelegramConfig {
   token: string;

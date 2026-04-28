@@ -2,8 +2,8 @@
 // Enhanced Telegram user registration and wallet setup flow
 
 import { Context, Markup } from 'telegraf';
-import userManager from './user-manager';
-import telemetryLogger from './telemetry';
+import userManager from './user-manager.js';
+import telemetryLogger from './telemetry.js';
 import { Keypair } from '@solana/web3.js';
 
 // bs58 is available from @solana/web3.js

@@ -1,6 +1,6 @@
-import database, { TradingSession } from './database';
-import telemetryLogger from './telemetry';
-import userManager from './user-manager';
+import database, { TradingSession } from './database.js';
+import telemetryLogger from './telemetry.js';
+import userManager from './user-manager.js';
 
 interface Trade { mint: string; entryPrice: number; entryAmount: number; currentPrice: number; profitPct: number; riskReward: number; }
 interface TradingSignal { type: 'BUY' | 'SELL'; mint: string; price: number; confidence: number; reason: string; }
