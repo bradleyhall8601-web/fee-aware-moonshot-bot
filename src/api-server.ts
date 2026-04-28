@@ -6,11 +6,11 @@ import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import database from './database';
-import userManager from './user-manager';
-import telemetryLogger from './telemetry';
-import tradingEngine from './trading-engine';
-import dexMarketData from './dex-market-data';
+import database from './database.js';
+import userManager from './user-manager.js';
+import telemetryLogger from './telemetry.js';
+import tradingEngine from './trading-engine.js';
+import dexMarketData from './dex-market-data.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);

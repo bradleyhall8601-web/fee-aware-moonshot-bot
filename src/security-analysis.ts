@@ -1,7 +1,7 @@
 // src/security-analysis.ts
 // Intelligent security analysis for rug pull detection and token quality scoring
 
-import telemetryLogger from './telemetry';
+import telemetryLogger from './telemetry.js';
 
 export interface SecurityAnalysis {
   overallScore: number; // 0-100, higher is safer

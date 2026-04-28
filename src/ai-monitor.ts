@@ -2,8 +2,8 @@
 // AI-powered monitoring and auto-fix agent
 // NOTE: OpenAI functionality disabled by default. Enable with ENABLE_AI_MONITOR=true
 
-import database from './database';
-import telemetryLogger from './telemetry';
+import database from './database.js';
+import telemetryLogger from './telemetry.js';
 
 // Feature flag: Enable AI monitoring (disabled by default for cost control)
 const ENABLE_AI_MONITOR = process.env.ENABLE_AI_MONITOR === 'true';

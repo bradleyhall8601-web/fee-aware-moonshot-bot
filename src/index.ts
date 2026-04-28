@@ -4,9 +4,9 @@
 import * as dotenv from "dotenv";
 dotenv.config();
 
-import botOrchestrator from "./bot-orchestrator";
-import telemetryLogger from "./telemetry";
-import database from "./database";
+import botOrchestrator from "./bot-orchestrator.js";
+import telemetryLogger from "./telemetry.js";
+import database from "./database.js";
 
 // ── Paper Trading Mode Safety Guard ──────────────────────────────────────────
 // This bot runs in PAPER TRADING mode by default (no real funds at risk).

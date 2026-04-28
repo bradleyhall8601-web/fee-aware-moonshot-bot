@@ -1,14 +1,14 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-import database from './database';
-import userManager from './user-manager';
-import telemetryLogger from './telemetry';
-import aiMonitor from './ai-monitor';
-import telegramBot from './telegram-multi';
-import tradingEngine from './trading-engine';
-import apiServer from './api-server';
-import dexMarketData from './dex-market-data';
+import database from './database.js';
+import userManager from './user-manager.js';
+import telemetryLogger from './telemetry.js';
+import aiMonitor from './ai-monitor.js';
+import telegramBot from './telegram-multi.js';
+import tradingEngine from './trading-engine.js';
+import apiServer from './api-server.js';
+import dexMarketData from './dex-market-data.js';
 
 interface BotState {
   isRunning: boolean;

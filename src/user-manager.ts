@@ -2,8 +2,8 @@
 // Multi-user management system
 
 import { v4 as uuidv4 } from 'uuid';
-import database, { User, UserConfig } from './database';
-import telemetryLogger from './telemetry';
+import database, { User, UserConfig } from './database.js';
+import telemetryLogger from './telemetry.js';
 
 class UserManager {
   private activeUsers: Map<string, any> = new Map();

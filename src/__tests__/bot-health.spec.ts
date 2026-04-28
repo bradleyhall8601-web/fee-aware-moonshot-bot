@@ -1,5 +1,5 @@
 // src/__tests__/bot-health.spec.ts
-import telemetryLogger from '../telemetry';
+import telemetryLogger from '../telemetry.js';
 
 describe('Bot Health Check', () => {
   describe('Telemetry Logger', () => {

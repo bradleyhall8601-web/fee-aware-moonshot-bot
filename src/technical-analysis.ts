@@ -1,7 +1,7 @@
 // src/technical-analysis.ts
 // Advanced technical analysis with multiple indicators
 
-import telemetryLogger from './telemetry';
+import telemetryLogger from './telemetry.js';
 
 export interface PricePoint {
   timestamp: number;

@@ -1,8 +1,8 @@
 // src/advanced-risk-management.ts
 // Intelligent portfolio and risk management with correlation analysis
 
-import database, { TradingSession } from './database';
-import telemetryLogger from './telemetry';
+import database, { TradingSession } from './database.js';
+import telemetryLogger from './telemetry.js';
 
 export interface PortfolioMetrics {
   totalValue: number;

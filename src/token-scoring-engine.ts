@@ -1,9 +1,9 @@
 // src/token-scoring-engine.ts
 // Comprehensive token scoring combining technical, security, and market analysis
 
-import TechnicalAnalysis, { TechnicalIndicators } from './technical-analysis';
-import SecurityAnalyzer, { SecurityAnalysis } from './security-analysis';
-import telemetryLogger from './telemetry';
+import TechnicalAnalysis, { TechnicalIndicators } from './technical-analysis.js';
+import SecurityAnalyzer, { SecurityAnalysis } from './security-analysis.js';
+import telemetryLogger from './telemetry.js';
 
 type SecurityScore = SecurityAnalysis;
 

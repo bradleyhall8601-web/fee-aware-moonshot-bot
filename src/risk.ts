@@ -2,8 +2,8 @@
 // Intelligent Risk Management with Portfolio-level Controls
 // Replaces basic stop-loss with advanced risk management
 
-import AdvancedRiskManager, { PortfolioMetrics, PositionSizing } from './advanced-risk-management';
-import { TradingSession } from './database';
+import AdvancedRiskManager, { PortfolioMetrics, PositionSizing } from './advanced-risk-management.js';
+import { TradingSession } from './database.js';
 
 // Constants
 const STOP_LOSS_THRESHOLD = 0.15; // 15% trailing stop by default
