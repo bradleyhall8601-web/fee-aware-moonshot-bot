@@ -34,7 +34,7 @@ RUN npm install --omit=dev
 FROM node:18-alpine AS production
 WORKDIR /app
 
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache python3 make g++ dumb-init
 
 # Copy production node_modules (pre-built with native modules)
 COPY --from=prod-deps /app/node_modules ./node_modules
