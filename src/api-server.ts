@@ -22,7 +22,7 @@ const FRONTEND_DIST = path.resolve(__dirname, '..', 'frontend', 'dist');
 
 class ApiServer {
   private app: Express;
-  private port = parseInt(process.env.API_PORT || '3000', 10);
+  private port = parseInt(process.env.PORT || '5000', 10);
   private server: any = null;
 
   constructor() {
@@ -247,7 +247,7 @@ class ApiServer {
         users: telegramUsers,
         recentLogs: telegramDebug.getRecentLogs(30),
         allLogs: telegramDebug.getAllLogs(),
-        usage: 'View this at http://localhost:3000/debug/telegram',
+        usage: 'View this at /debug/telegram',
       });
     } catch (err) {
       res.status(500).json({ error: String(err) });
@@ -277,9 +277,9 @@ class ApiServer {
           totalTrades: trades.length,
         },
         endpoints: {
-          telegram: 'http://localhost:3000/debug/telegram',
-          status: 'http://localhost:3000/api/system/status',
-          health: 'http://localhost:3000/health',
+          telegram: '/debug/telegram',
+          status: '/api/system/status',
+          health: '/health',
         }
       });
     } catch (err) {
