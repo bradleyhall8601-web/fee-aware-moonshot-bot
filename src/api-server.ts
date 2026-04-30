@@ -22,7 +22,7 @@ const FRONTEND_DIST = path.resolve(__dirname, '..', 'frontend', 'dist');
 
 class ApiServer {
   private app: Express;
-  private port = parseInt(process.env.API_PORT || '3000', 10);
+  private port = parseInt(process.env.PORT || process.env.API_PORT || '5000', 10);
   private server: any = null;
 
   constructor() {
