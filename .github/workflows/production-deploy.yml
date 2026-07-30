@@ -1,0 +1,191 @@
+name: Production Deploy (Vercel + Supabase Only)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: moonshotforge-production
+  cancel-in-progress: false
+
+env:
+  SUPABASE_PROJECT_REF: hslwefouokfbpwyflqds
+  VERCEL_PROJECT_NAME: moonshotforge
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install and verify source
+        run: |
+          npm install --include=dev --no-audit --no-fund
+          npm run typecheck
+          npm test
+          npm run build
+        env:
+          NODE_ENV: production
+          PUBLIC_BASE_URL: https://bootstrap.invalid
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: sb_secret_00000000000000000000000000000000
+          TELEGRAM_BOT_TOKEN: test_telegram_token_not_real_000000000000000
+          TELEGRAM_WEBHOOK_SECRET: test_webhook_secret_000000000000
+          OWNER_TELEGRAM_ID: '1000000000'
+          ADMIN_PASSWORD: test_admin_password_000000
+          ADMIN_SESSION_SECRET: test_session_secret_000000000000000000000000000000
+          CRON_SECRET: test_cron_secret_000000000000000000
+          DEPLOY_SECRET: test_deploy_secret_000000000000000000
+          ENABLE_LIVE_TRADING: 'false'
+          PAPER_TRADING_ONLY: 'true'
+          STRICT_DATA_GATE: 'true'
+
+      - name: Check deployment credentials
+        id: preflight
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+          OWNER_TELEGRAM_ID: ${{ secrets.OWNER_TELEGRAM_ID }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          ADMIN_SESSION_SECRET: ${{ secrets.ADMIN_SESSION_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+        run: |
+          missing=()
+          for name in \
+            VERCEL_TOKEN SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD \
+            SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY TELEGRAM_BOT_TOKEN \
+            TELEGRAM_WEBHOOK_SECRET OWNER_TELEGRAM_ID ADMIN_PASSWORD \
+            ADMIN_SESSION_SECRET CRON_SECRET DEPLOY_SECRET; do
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+            echo '### Production preflight: ready' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo '### Production preflight: credentials still needed' >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\n' "${missing[@]}" | sed 's/^/- `/' | sed 's/$/`/' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Apply Supabase migrations
+        if: steps.preflight.outputs.ready == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          if [ ! -f supabase/config.toml ]; then
+            npx supabase@latest init
+          fi
+          npx supabase@latest link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          npx supabase@latest db push --linked --include-all --yes
+
+      - name: Link Vercel project
+        if: steps.preflight.outputs.ready == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
+        run: |
+          scope_args=()
+          if [ -n "${VERCEL_SCOPE:-}" ]; then scope_args+=(--scope "$VERCEL_SCOPE"); fi
+          npx vercel@latest link --yes --project "$VERCEL_PROJECT_NAME" --token "$VERCEL_TOKEN" "${scope_args[@]}"
+
+      - name: Configure Vercel production environment
+        if: steps.preflight.outputs.ready == 'true'
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+          OWNER_TELEGRAM_ID: ${{ secrets.OWNER_TELEGRAM_ID }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          ADMIN_SESSION_SECRET: ${{ secrets.ADMIN_SESSION_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+          HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+        run: |
+          set_env() {
+            local name="$1" value="$2" sensitive="${3:-true}"
+            local args=(env add "$name" production --force --token "$VERCEL_TOKEN")
+            if [ "$sensitive" = true ]; then args+=(--sensitive); fi
+            printf '%s' "$value" | npx vercel@latest "${args[@]}"
+          }
+
+          set_env SUPABASE_URL "$SUPABASE_URL"
+          set_env SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
+          set_env TELEGRAM_BOT_TOKEN "$TELEGRAM_BOT_TOKEN"
+          set_env TELEGRAM_WEBHOOK_SECRET "$TELEGRAM_WEBHOOK_SECRET"
+          set_env OWNER_TELEGRAM_ID "$OWNER_TELEGRAM_ID"
+          set_env ADMIN_PASSWORD "$ADMIN_PASSWORD"
+          set_env ADMIN_SESSION_SECRET "$ADMIN_SESSION_SECRET"
+          set_env CRON_SECRET "$CRON_SECRET"
+          set_env DEPLOY_SECRET "$DEPLOY_SECRET"
+          set_env ENABLE_LIVE_TRADING false false
+          set_env PAPER_TRADING_ONLY true false
+          set_env STRICT_DATA_GATE true false
+          set_env SOLANA_RPC_URL "${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}" false
+          if [ -n "${HELIUS_API_KEY:-}" ]; then set_env HELIUS_API_KEY "$HELIUS_API_KEY"; fi
+          set_env PUBLIC_BASE_URL https://bootstrap.invalid false
+
+      - name: First production deployment
+        if: steps.preflight.outputs.ready == 'true'
+        id: deploy_one
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          url="$(npx vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Set final public URL and redeploy
+        if: steps.preflight.outputs.ready == 'true'
+        id: deploy_final
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          FIRST_URL: ${{ steps.deploy_one.outputs.url }}
+        run: |
+          printf '%s' "$FIRST_URL" | npx vercel@latest env add PUBLIC_BASE_URL production --force --token "$VERCEL_TOKEN"
+          url="$(npx vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "### Production URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "$url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Configure Cron and Telegram webhook
+        if: steps.preflight.outputs.ready == 'true'
+        env:
+          FINAL_URL: ${{ steps.deploy_final.outputs.url }}
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+        run: |
+          curl --fail-with-body --retry 4 --retry-delay 5 \
+            -X POST "$FINAL_URL/api/deploy/configure" \
+            -H "Authorization: Bearer $DEPLOY_SECRET" \
+            -H 'Content-Type: application/json'
+
+      - name: Verify production health
+        if: steps.preflight.outputs.ready == 'true'
+        env:
+          FINAL_URL: ${{ steps.deploy_final.outputs.url }}
+        run: |
+          curl --fail-with-body --retry 6 --retry-delay 5 "$FINAL_URL/api/health"
