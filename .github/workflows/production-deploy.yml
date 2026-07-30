@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  SUPABASE_PROJECT_REF: rimroojqseezusggiwkd
-  VERCEL_PROJECT_NAME: moonshotforge
+  SUPABASE_PROJECT_REF: xlzkrfbcjtqkuyfihtwx
+  VERCEL_PROJECT_NAME: moonshotforge-prod
 
 jobs:
   deploy:
