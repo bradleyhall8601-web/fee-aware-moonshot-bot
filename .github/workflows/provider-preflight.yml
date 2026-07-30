@@ -1,0 +1,48 @@
+name: Provider Credential Preflight
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/provider-preflight.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Vercel and Supabase deployment credentials
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+          OWNER_TELEGRAM_ID: ${{ secrets.OWNER_TELEGRAM_ID }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          ADMIN_SESSION_SECRET: ${{ secrets.ADMIN_SESSION_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+        run: |
+          missing=()
+          for name in \
+            VERCEL_TOKEN SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD \
+            SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY TELEGRAM_BOT_TOKEN \
+            TELEGRAM_WEBHOOK_SECRET OWNER_TELEGRAM_ID ADMIN_PASSWORD \
+            ADMIN_SESSION_SECRET CRON_SECRET DEPLOY_SECRET; do
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            joined="$(IFS=', '; echo "${missing[*]}")"
+            echo "::error::Missing repository secrets: $joined"
+            exit 1
+          fi
+
+          echo 'All required provider credentials are present.'
